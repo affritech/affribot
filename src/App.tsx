@@ -36,7 +36,7 @@ function App() {
           <main>
             <div className="main-app-area">
               {/* APP goes here */}
-              <Canvas  shadows camera={{ position: [0, 2, 5], fov: 30 }}>
+              <Canvas  shadows camera={{ position: [0, 2, 5], fov: 50 }}>
                 <color attach="background" args={["#ececec"]} />
                 <Experience />
               </Canvas>

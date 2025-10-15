@@ -17,6 +17,7 @@
     "react-scripts": "5.0.1",
     "react-select": "^5.8.3",
     "react-syntax-highlighter": "^15.6.1",
+    "rhubarb-lip-sync-wasm": "^0.1.8",
     "sass": "^1.80.6",
     "three": "^0.180.0",
     "vega": "^5.30.0",

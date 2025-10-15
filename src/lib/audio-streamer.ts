@@ -3,29 +3,54 @@ import {
   registeredWorklets,
 } from "./audioworklet-registry";
 
+// ============================================
+// IMPORT LIP SYNC ENGINE (NEW)
+// ============================================
+import { LipSyncEngine } from "./LipSyncSystem";
+
 export class AudioStreamer {
   private sampleRate: number = 24000;
   private bufferSize: number = 7680;
-  // A queue of audio buffers to be played. Each buffer is a Float32Array.
   private audioQueue: Float32Array[] = [];
   private isPlaying: boolean = false;
-  // Indicates if the stream has finished playing, e.g., interrupted.
   private isStreamComplete: boolean = false;
   private checkInterval: number | null = null;
   private scheduledTime: number = 0;
-  private initialBufferTime: number = 0.1; //0.1 // 100ms initial buffer
-  // Web Audio API nodes. source => gain => destination
+  private initialBufferTime: number = 0.1;
   public gainNode: GainNode;
   public source: AudioBufferSourceNode;
   private endOfQueueAudioSource: AudioBufferSourceNode | null = null;
 
   public onComplete = () => {};
 
+  // ============================================
+  // NEW: LIP SYNC PROPERTIES (NON-BREAKING)
+  // ============================================
+  public lipSyncEngine: LipSyncEngine | null = null;
+  private lipSyncEnabled: boolean = false;
+
   constructor(public context: AudioContext) {
     this.gainNode = this.context.createGain();
     this.source = this.context.createBufferSource();
     this.gainNode.connect(this.context.destination);
     this.addPCM16 = this.addPCM16.bind(this);
+  }
+
+  // ============================================
+  // NEW: ENABLE LIP SYNC (OPTIONAL)
+  // ============================================
+  enableLipSync(engine: LipSyncEngine): void {
+    this.lipSyncEngine = engine;
+    this.lipSyncEnabled = true;
+    console.log("✅ Lip sync enabled");
+  }
+
+  // ============================================
+  // NEW: DISABLE LIP SYNC (OPTIONAL)
+  // ============================================
+  disableLipSync(): void {
+    this.lipSyncEnabled = false;
+    console.log("❌ Lip sync disabled");
   }
 
   async addWorklet<T extends (d: any) => void>(
@@ -35,11 +60,8 @@ export class AudioStreamer {
   ): Promise<this> {
     let workletsRecord = registeredWorklets.get(this.context);
     if (workletsRecord && workletsRecord[workletName]) {
-      // the worklet already exists on this context
-      // add the new handler to it
       workletsRecord[workletName].handlers.push(handler);
       return Promise.resolve(this);
-      //throw new Error(`Worklet ${workletName} already exists on context`);
     }
 
     if (!workletsRecord) {
@@ -47,27 +69,17 @@ export class AudioStreamer {
       workletsRecord = registeredWorklets.get(this.context)!;
     }
 
-    // create new record to fill in as becomes available
     workletsRecord[workletName] = { handlers: [handler] };
 
     const src = createWorketFromSrc(workletName, workletSrc);
     await this.context.audioWorklet.addModule(src);
     const worklet = new AudioWorkletNode(this.context, workletName);
 
-    //add the node into the map
     workletsRecord[workletName].node = worklet;
 
     return this;
   }
 
-  /**
-   * Converts a Uint8Array of PCM16 audio data into a Float32Array.
-   * PCM16 is a common raw audio format, but the Web Audio API generally
-   * expects audio data as Float32Arrays with samples normalized between -1.0 and 1.0.
-   * This function handles that conversion.
-   * @param chunk The Uint8Array containing PCM16 audio data.
-   * @returns A Float32Array representing the converted audio data.
-   */
   private _processPCM16Chunk(chunk: Uint8Array): Float32Array {
     const float32Array = new Float32Array(chunk.length / 2);
     const dataView = new DataView(chunk.buffer);
@@ -84,25 +96,35 @@ export class AudioStreamer {
   }
 
   addPCM16(chunk: Uint8Array) {
-    // Reset the stream complete flag when a new chunk is added.
     this.isStreamComplete = false;
-    // Process the chunk into a Float32Array
     let processingBuffer = this._processPCM16Chunk(chunk);
-    // Add the processed buffer to the queue if it's larger than the buffer size.
-    // This is to ensure that the buffer is not too large.
+
+    // ============================================
+    // NEW: PROCESS AUDIO FOR LIP SYNC (NON-BREAKING)
+    // ============================================
+    if (this.lipSyncEnabled && this.lipSyncEngine) {
+      // Create a copy for lip sync analysis
+      const lipSyncBuffer = new Float32Array(processingBuffer);
+      try {
+        this.lipSyncEngine.processAudioData(lipSyncBuffer, Date.now());
+      } catch (error) {
+        console.error("Lip sync processing error:", error);
+      }
+    }
+    // ============================================
+
     while (processingBuffer.length >= this.bufferSize) {
       const buffer = processingBuffer.slice(0, this.bufferSize);
       this.audioQueue.push(buffer);
       processingBuffer = processingBuffer.slice(this.bufferSize);
     }
-    // Add the remaining buffer to the queue if it's not empty.
+
     if (processingBuffer.length > 0) {
       this.audioQueue.push(processingBuffer);
     }
-    // Start playing if not already playing.
+
     if (!this.isPlaying) {
       this.isPlaying = true;
-      // Initialize scheduledTime only when we start playing
       this.scheduledTime = this.context.currentTime + this.initialBufferTime;
       this.scheduleNextBuffer();
     }
@@ -164,7 +186,7 @@ export class AudioStreamer {
           }
         });
       }
-      // Ensure we never schedule in the past
+
       const startTime = Math.max(this.scheduledTime, this.context.currentTime);
       source.start(startTime);
       this.scheduledTime = startTime + audioBuffer.duration;
@@ -207,6 +229,13 @@ export class AudioStreamer {
       this.checkInterval = null;
     }
 
+    // ============================================
+    // NEW: STOP LIP SYNC (NON-BREAKING)
+    // ============================================
+    if (this.lipSyncEnabled && this.lipSyncEngine) {
+      this.lipSyncEngine.stop();
+    }
+
     this.gainNode.gain.linearRampToValueAtTime(
       0,
       this.context.currentTime + 0.1
@@ -233,17 +262,3 @@ export class AudioStreamer {
     this.onComplete();
   }
 }
-
-// // Usage example:
-// const audioStreamer = new AudioStreamer();
-//
-// // In your streaming code:
-// function handleChunk(chunk: Uint8Array) {
-//   audioStreamer.handleChunk(chunk);
-// }
-//
-// // To start playing (call this in response to a user interaction)
-// await audioStreamer.resume();
-//
-// // To stop playing
-// // audioStreamer.stop();

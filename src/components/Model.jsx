@@ -182,7 +182,9 @@ export function Avatar(props) {
     return controls;
   };
 
-  const morphControls = ENABLE_LEVA_CONTROLS ? useControls(createMorphControls()) : {};
+  const morphControls = useControls(
+  ENABLE_LEVA_CONTROLS ? createMorphControls() : {}
+);
 
   // Apply Leva controls to morph targets (ONLY when lip sync is disabled)
   useEffect(() => {

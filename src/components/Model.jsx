@@ -20,7 +20,7 @@ import {
 import { useLiveAPIContext } from "../contexts/LiveAPIContext";
 
 // Toggle this to enable/disable Leva controls
-const ENABLE_LEVA_CONTROLS = true;
+const ENABLE_LEVA_CONTROLS = false;
 
 export function Avatar(props) {
   const { animation = "Idle", ...restProps } = props;
@@ -182,10 +182,9 @@ export function Avatar(props) {
     return controls;
   };
 
-  const morphControls = useControls(
-  ENABLE_LEVA_CONTROLS ? createMorphControls() : {}
-);
-
+  const morphControls = ENABLE_LEVA_CONTROLS 
+  ? useControls(createMorphControls()) 
+  : {};
   // Apply Leva controls to morph targets (ONLY when lip sync is disabled)
   useEffect(() => {
     if (!ENABLE_LEVA_CONTROLS || lipSyncEnabled || !morphControls) return;

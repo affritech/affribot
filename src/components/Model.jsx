@@ -2,7 +2,7 @@ import { useAnimations, useFBX, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { useControls, button, folder } from "leva";
+// import { useControls, button, folder } from "leva";
 
 // ============================================
 // IMPORT LIP SYNC SYSTEM (NEW)
@@ -106,6 +106,10 @@ export function Avatar(props) {
     }
   }, [audioStreamer, lipSyncEnabled]);
 
+  // ============================================
+  // LEVA CONTROLS - COMMENTED OUT FOR PRODUCTION
+  // ============================================
+  /*
   // Create Leva controls dynamically based on discovered morph targets
   const createMorphControls = () => {
     if (!ENABLE_LEVA_CONTROLS) return {};
@@ -185,6 +189,7 @@ export function Avatar(props) {
   const morphControls = ENABLE_LEVA_CONTROLS 
   ? useControls(createMorphControls()) 
   : {};
+  
   // Apply Leva controls to morph targets (ONLY when lip sync is disabled)
   useEffect(() => {
     if (!ENABLE_LEVA_CONTROLS || lipSyncEnabled || !morphControls) return;
@@ -240,6 +245,7 @@ export function Avatar(props) {
       );
     }
   }, [morphControls.testViseme, nodes, lipSyncEnabled]);
+  */
 
   // Helper functions
   const logCurrentMorphTargets = () => {

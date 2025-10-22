@@ -56,6 +56,9 @@
 body {
   font-family: "Space Mono", monospace;
   background: var(--Neutral-30);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .material-symbols-outlined {
@@ -102,6 +105,7 @@ body {
 
 .h-screen-full {
   height: 100vh;
+  height: 100dvh; /* Dynamic viewport height for mobile */
 }
 
 .w-screen-full {
@@ -120,6 +124,7 @@ body {
   color: var(--gray-300);
   display: flex;
   height: 100vh;
+  height: 100dvh; /* Better mobile support */
   width: 100vw;
 
   a,
@@ -146,6 +151,7 @@ body {
     gap: 1rem;
     max-width: 100%;
     overflow: hidden;
+    padding: 1rem;
   }
 
   .main-app-area {
@@ -153,6 +159,8 @@ body {
     flex: 1;
     align-items: center;
     justify-content: center;
+    width: 100%;
+    max-width: 100%;
   }
 
   .function-call {
@@ -170,4 +178,130 @@ body {
   max-width: 90%;
   border-radius: 32px;
   max-height: fit-content;
+  width: 100%;
+}
+
+/* ============================================ */
+/* MOBILE RESPONSIVE BREAKPOINTS */
+/* ============================================ */
+
+/* Tablets and small laptops */
+@media (max-width: 1024px) {
+  .streaming-console main {
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .stream {
+    max-width: 95%;
+    border-radius: 24px;
+  }
+}
+
+/* Mobile devices */
+@media (max-width: 768px) {
+  .streaming-console {
+    flex-direction: column;
+  }
+
+  .streaming-console main {
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  .stream {
+    max-width: 98%;
+    border-radius: 16px;
+  }
+
+  .function-call {
+    height: 40%;
+    font-size: 0.9rem;
+  }
+}
+
+/* Small mobile devices */
+@media (max-width: 480px) {
+  body {
+    font-size: 14px;
+  }
+
+  .streaming-console main {
+    gap: 0.25rem;
+    padding: 0.25rem;
+  }
+
+  .stream {
+    max-width: 100%;
+    border-radius: 12px;
+  }
+
+  .function-call {
+    height: 35%;
+    font-size: 0.85rem;
+  }
+
+  .main-app-area {
+    padding: 0.5rem;
+  }
+}
+
+/* Landscape mobile orientation */
+@media (max-width: 896px) and (orientation: landscape) {
+  .streaming-console {
+    flex-direction: row;
+  }
+
+  .streaming-console main {
+    padding: 0.5rem;
+  }
+
+  .stream {
+    max-width: 80%;
+    max-height: 85vh;
+    max-height: 85dvh;
+  }
+
+  .function-call {
+    height: 30%;
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  /* Increase touch targets */
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Improve scrolling on touch devices */
+  .function-call {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Very small screens (like iPhone SE) */
+@media (max-width: 375px) {
+  .stream {
+    border-radius: 8px;
+  }
+
+  .function-call {
+    font-size: 0.8rem;
+  }
+}
+
+/* Support for devices with notches/safe areas */
+@supports (padding: env(safe-area-inset-top)) {
+  .streaming-console {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
 }

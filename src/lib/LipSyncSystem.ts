@@ -1,5 +1,5 @@
 // ============================================================================
-// LIP SYNC SYSTEM - ARKit 52 Blend Shapes (UPDATED WITH RHUBARB)
+// LIP SYNC SYSTEM - ARKit 52 Blend Shapes (FIXED FOR INTERRUPTIONS)
 // ============================================================================
 
 export interface VisemeFrame {
@@ -187,16 +187,16 @@ export const VISEME_MAPPINGS: Record<string, Expression> = {
 };
 
 // ============================================================================
-// LIP SYNC ENGINE (UPDATED FOR RHUBARB)
+// LIP SYNC ENGINE (FIXED FOR INTERRUPTIONS)
 // ============================================================================
 
 export class LipSyncEngine {
   private visemeQueue: VisemeFrame[] = [];
   private currentViseme: string = 'neutral';
   private audioContext: AudioContext | null = null;
-  private baseTime: number = 0; // AudioContext.currentTime when playback starts
+  private baseTime: number = 0;
   private isPlaying: boolean = false;
-  private useRhubarb: boolean = true; // NEW: Toggle for Rhubarb
+  private useRhubarb: boolean = true;
 
   constructor(useRhubarb: boolean = true) {
     this.useRhubarb = useRhubarb;
@@ -204,182 +204,64 @@ export class LipSyncEngine {
   }
 
   // ============================================================================
-  // NEW: Direct viseme queue setting (for Rhubarb)
+  // NEW: Set audio context for timing sync
+  // ============================================================================
+
+  setAudioContext(context: AudioContext): void {
+    this.audioContext = context;
+    console.log("🔗 Audio context linked to LipSyncEngine");
+  }
+
+  // ============================================================================
+  // FIXED: Direct viseme queue setting (synced with audio time)
   // ============================================================================
 
   /**
    * Set viseme queue directly (from Rhubarb or external source)
+   * Now uses scheduled audio time instead of Date.now()
    */
-  setVisemeQueue(queue: VisemeFrame[]): void {
+  setVisemeQueue(queue: VisemeFrame[], audioStartTime: number): void {
     this.visemeQueue = queue;
+    this.baseTime = audioStartTime;
+    
     if (!this.isPlaying && queue.length > 0) {
       this.startPlayback();
     }
-    console.log(`📊 Viseme queue set: ${queue.length} frames`);
+    console.log(`📊 Viseme queue set: ${queue.length} frames at audio time ${audioStartTime.toFixed(3)}s`);
   }
 
   /**
-   * Add visemes to queue with timing offset
+   * Add visemes to queue with audio time synchronization
    */
-  addVisemes(visemes: VisemeFrame[], timeOffset: number = 0): void {
-    const offsetVisemes = visemes.map(v => ({
-      ...v,
-      startTime: v.startTime + timeOffset,
-      endTime: v.endTime + timeOffset
+  addVisemes(visemes: VisemeFrame[], audioStartTime: number): void {
+    // Convert relative times to absolute audio context times
+    const syncedVisemes = visemes.map(v => ({
+      viseme: v.viseme,
+      startTime: audioStartTime + v.startTime / 1000, // Convert ms to seconds
+      endTime: audioStartTime + v.endTime / 1000
     }));
     
-    this.visemeQueue.push(...offsetVisemes);
+    this.visemeQueue.push(...syncedVisemes);
+    
+    // Sort by start time to handle overlapping additions
+    this.visemeQueue.sort((a, b) => a.startTime - b.startTime);
     
     if (!this.isPlaying && this.visemeQueue.length > 0) {
       this.startPlayback();
     }
+    
+    console.log(`➕ Added ${visemes.length} visemes at audio time ${audioStartTime.toFixed(3)}s`);
   }
 
   // ============================================================================
-  // LEGACY: Process Float32Array audio data (fallback)
-  // ============================================================================
-
-  processAudioData(audioData: Float32Array, timestamp: number = Date.now()): void {
-    if (this.useRhubarb) {
-      // When using Rhubarb, audio is processed externally
-      console.warn("⚠️ processAudioData called but Rhubarb mode is enabled");
-      return;
-    }
-
-    const visemes = this.analyzeAudio(audioData);
-    
-    if (!this.isPlaying) {
-      this.startTime = Date.now();
-      this.isPlaying = true;
-    }
-    
-    const elapsedSinceStart = Date.now() - this.startTime;
-    const offsetVisemes = visemes.map(v => ({
-      ...v,
-      startTime: elapsedSinceStart + v.startTime,
-      endTime: elapsedSinceStart + v.endTime
-    }));
-
-    this.visemeQueue.push(...offsetVisemes);
-  }
-
-  // ============================================================================
-  // LEGACY AUDIO ANALYSIS (kept for fallback)
-  // ============================================================================
-
-  private analyzeAudio(audioData: Float32Array): VisemeFrame[] {
-    const frames: VisemeFrame[] = [];
-    const sampleRate = 24000;
-    const windowSize = Math.floor(sampleRate * 0.05);
-    const hopSize = Math.floor(windowSize / 2);
-
-    for (let i = 0; i < audioData.length - windowSize; i += hopSize) {
-      const window = audioData.slice(i, i + windowSize);
-      const rms = this.calculateRMS(window);
-
-      let viseme = 'neutral';
-      if (rms > 0.02) {
-        const frequencies = this.getFrequencyFeatures(window);
-        viseme = this.frequenciesToViseme(frequencies, rms);
-      } else {
-        viseme = 'sil';
-      }
-
-      const startTime = (i / sampleRate) * 1000;
-      const endTime = ((i + windowSize) / sampleRate) * 1000;
-
-      frames.push({ viseme, startTime, endTime });
-    }
-
-    return this.smoothVisemes(frames);
-  }
-
-  private calculateRMS(buffer: Float32Array): number {
-    let sum = 0;
-    for (let i = 0; i < buffer.length; i++) {
-      sum += buffer[i] * buffer[i];
-    }
-    return Math.sqrt(sum / buffer.length);
-  }
-
-  private getFrequencyFeatures(buffer: Float32Array) {
-    const third = Math.floor(buffer.length / 3);
-    const low = this.calculateRMS(buffer.slice(0, third));
-    const mid = this.calculateRMS(buffer.slice(third, third * 2));
-    const high = this.calculateRMS(buffer.slice(third * 2));
-    return { low, mid, high };
-  }
-
-  private frequenciesToViseme(freq: { low: number, mid: number, high: number }, amplitude: number): string {
-    const total = freq.low + freq.mid + freq.high;
-    if (total < 0.01) return 'sil';
-
-    const lowRatio = freq.low / total;
-    const midRatio = freq.mid / total;
-    const highRatio = freq.high / total;
-
-    if (lowRatio > 0.45) {
-      return amplitude > 0.1 ? 'aa' : 'O';
-    }
-    
-    if (highRatio > 0.4) {
-      return amplitude > 0.08 ? 'SS' : 'I';
-    }
-    
-    if (midRatio > 0.4) {
-      if (amplitude > 0.12) return 'E';
-      if (amplitude > 0.06) return 'DD';
-      return 'nn';
-    }
-
-    if (lowRatio > 0.3 && highRatio > 0.3) {
-      return 'RR';
-    }
-
-    return amplitude > 0.08 ? 'aa' : 'neutral';
-  }
-
-  private smoothVisemes(frames: VisemeFrame[]): VisemeFrame[] {
-    if (frames.length < 5) return frames;
-
-    const smoothed: VisemeFrame[] = [];
-    
-    for (let i = 0; i < frames.length; i++) {
-      if (i < 2 || i >= frames.length - 2) {
-        smoothed.push(frames[i]);
-        continue;
-      }
-
-      const window = [
-        frames[i - 2].viseme,
-        frames[i - 1].viseme,
-        frames[i].viseme,
-        frames[i + 1].viseme,
-        frames[i + 2].viseme
-      ];
-
-      const counts: Record<string, number> = {};
-      window.forEach(v => counts[v] = (counts[v] || 0) + 1);
-
-      if (counts[frames[i].viseme] === 1) {
-        const mostCommon = Object.entries(counts)
-          .sort((a, b) => b[1] - a[1])[0][0];
-        smoothed.push({ ...frames[i], viseme: mostCommon });
-      } else {
-        smoothed.push(frames[i]);
-      }
-    }
-
-    return smoothed;
-  }
-
-  // ============================================================================
-  // PLAYBACK CONTROL
+  // FIXED: Use AudioContext time instead of Date.now()
   // ============================================================================
 
   private startPlayback(): void {
     this.isPlaying = true;
-    this.startTime = Date.now();
+    if (this.audioContext && this.visemeQueue.length > 0) {
+      this.baseTime = this.visemeQueue[0].startTime;
+    }
     console.log("▶️ Lip sync playback started");
   }
 
@@ -395,7 +277,7 @@ export class LipSyncEngine {
 
     if (frame) {
       if (this.currentViseme !== frame.viseme) {
-        console.log(`🗣️ Viseme: ${frame.viseme} at ${elapsed}ms`);
+        console.log(`🗣️ Viseme: ${frame.viseme} at audio time ${currentTime.toFixed(3)}s`);
       }
       this.currentViseme = frame.viseme;
       return frame.viseme;
@@ -428,6 +310,20 @@ export class LipSyncEngine {
   stop(): void {
     this.isPlaying = false;
     this.currentViseme = 'neutral';
+    console.log("⏹️ Lip sync stopped");
+  }
+
+  // ============================================================================
+  // NEW: Clear future visemes (for interruptions)
+  // ============================================================================
+
+  clearFutureVisemes(): void {
+    if (!this.audioContext) return;
+    
+    const currentTime = this.audioContext.currentTime;
+    // Keep only visemes that are currently playing or already passed
+    this.visemeQueue = this.visemeQueue.filter(v => v.endTime <= currentTime + 0.1);
+    console.log("🗑️ Cleared future visemes due to interruption");
   }
 
   // ============================================================================
@@ -440,6 +336,10 @@ export class LipSyncEngine {
 
   isActive(): boolean {
     return this.isPlaying;
+  }
+
+  getAudioContext(): AudioContext | null {
+    return this.audioContext;
   }
 }
 

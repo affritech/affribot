@@ -1,5 +1,5 @@
 // ============================================================================
-// LIP SYNC SYSTEM - ARKit 52 Blend Shapes (REALISTIC VALUES)
+// LIP SYNC SYSTEM - ARKit 52 Blend Shapes (UPDATED WITH RHUBARB)
 // ============================================================================
 
 export interface VisemeFrame {
@@ -187,7 +187,7 @@ export const VISEME_MAPPINGS: Record<string, Expression> = {
 };
 
 // ============================================================================
-// LIP SYNC ENGINE
+// LIP SYNC ENGINE (UPDATED FOR RHUBARB)
 // ============================================================================
 
 export class LipSyncEngine {
@@ -195,30 +195,64 @@ export class LipSyncEngine {
   private currentViseme: string = 'neutral';
   private startTime: number = 0;
   private isPlaying: boolean = false;
+  private useRhubarb: boolean = true; // NEW: Toggle for Rhubarb
 
-  constructor() {}
+  constructor(useRhubarb: boolean = true) {
+    this.useRhubarb = useRhubarb;
+    console.log(`🎤 LipSyncEngine initialized (Rhubarb: ${useRhubarb ? 'ON' : 'OFF'})`);
+  }
 
-  // Process Float32Array audio data
+  // ============================================================================
+  // NEW: Direct viseme queue setting (for Rhubarb)
+  // ============================================================================
+
+  /**
+   * Set viseme queue directly (from Rhubarb or external source)
+   */
+  setVisemeQueue(queue: VisemeFrame[]): void {
+    this.visemeQueue = queue;
+    if (!this.isPlaying && queue.length > 0) {
+      this.startPlayback();
+    }
+    console.log(`📊 Viseme queue set: ${queue.length} frames`);
+  }
+
+  /**
+   * Add visemes to queue with timing offset
+   */
+  addVisemes(visemes: VisemeFrame[], timeOffset: number = 0): void {
+    const offsetVisemes = visemes.map(v => ({
+      ...v,
+      startTime: v.startTime + timeOffset,
+      endTime: v.endTime + timeOffset
+    }));
+    
+    this.visemeQueue.push(...offsetVisemes);
+    
+    if (!this.isPlaying && this.visemeQueue.length > 0) {
+      this.startPlayback();
+    }
+  }
+
+  // ============================================================================
+  // LEGACY: Process Float32Array audio data (fallback)
+  // ============================================================================
+
   processAudioData(audioData: Float32Array, timestamp: number = Date.now()): void {
+    if (this.useRhubarb) {
+      // When using Rhubarb, audio is processed externally
+      console.warn("⚠️ processAudioData called but Rhubarb mode is enabled");
+      return;
+    }
+
     const visemes = this.analyzeAudio(audioData);
     
-    // DEBUG: Log what visemes are detected
-    if (visemes.length > 0) {
-      const uniqueVisemes = [...new Set(visemes.map(v => v.viseme))];
-      console.log("🎙️ Detected visemes:", uniqueVisemes.join(", "));
-    }
-    
-    // Start playback immediately if not playing
     if (!this.isPlaying) {
       this.startTime = Date.now();
       this.isPlaying = true;
-      console.log("▶️ Started lip sync playback at", this.startTime);
     }
     
-    // Calculate offset from when playback started (not absolute timestamp)
     const elapsedSinceStart = Date.now() - this.startTime;
-    
-    // Add visemes with relative timing
     const offsetVisemes = visemes.map(v => ({
       ...v,
       startTime: elapsedSinceStart + v.startTime,
@@ -226,14 +260,16 @@ export class LipSyncEngine {
     }));
 
     this.visemeQueue.push(...offsetVisemes);
-    console.log("📊 Viseme queue length:", this.visemeQueue.length);
   }
 
-  // Analyze audio and extract viseme timing
+  // ============================================================================
+  // LEGACY AUDIO ANALYSIS (kept for fallback)
+  // ============================================================================
+
   private analyzeAudio(audioData: Float32Array): VisemeFrame[] {
     const frames: VisemeFrame[] = [];
     const sampleRate = 24000;
-    const windowSize = Math.floor(sampleRate * 0.05); // 50ms windows
+    const windowSize = Math.floor(sampleRate * 0.05);
     const hopSize = Math.floor(windowSize / 2);
 
     for (let i = 0; i < audioData.length - windowSize; i += hopSize) {
@@ -241,7 +277,7 @@ export class LipSyncEngine {
       const rms = this.calculateRMS(window);
 
       let viseme = 'neutral';
-      if (rms > 0.02) { // Lower threshold for more sensitivity
+      if (rms > 0.02) {
         const frequencies = this.getFrequencyFeatures(window);
         viseme = this.frequenciesToViseme(frequencies, rms);
       } else {
@@ -257,7 +293,6 @@ export class LipSyncEngine {
     return this.smoothVisemes(frames);
   }
 
-  // Calculate RMS amplitude
   private calculateRMS(buffer: Float32Array): number {
     let sum = 0;
     for (let i = 0; i < buffer.length; i++) {
@@ -266,7 +301,6 @@ export class LipSyncEngine {
     return Math.sqrt(sum / buffer.length);
   }
 
-  // Extract frequency features (simplified)
   private getFrequencyFeatures(buffer: Float32Array) {
     const third = Math.floor(buffer.length / 3);
     const low = this.calculateRMS(buffer.slice(0, third));
@@ -275,34 +309,28 @@ export class LipSyncEngine {
     return { low, mid, high };
   }
 
-  // Map frequencies to visemes (improved)
   private frequenciesToViseme(freq: { low: number, mid: number, high: number }, amplitude: number): string {
     const total = freq.low + freq.mid + freq.high;
     if (total < 0.01) return 'sil';
 
-    // Normalize frequencies
     const lowRatio = freq.low / total;
     const midRatio = freq.mid / total;
     const highRatio = freq.high / total;
 
-    // Vowel sounds tend to have strong low frequencies
     if (lowRatio > 0.45) {
       return amplitude > 0.1 ? 'aa' : 'O';
     }
     
-    // High frequency sounds - sibilants
     if (highRatio > 0.4) {
       return amplitude > 0.08 ? 'SS' : 'I';
     }
     
-    // Mid-range - various consonants
     if (midRatio > 0.4) {
       if (amplitude > 0.12) return 'E';
       if (amplitude > 0.06) return 'DD';
       return 'nn';
     }
 
-    // Mixed frequencies
     if (lowRatio > 0.3 && highRatio > 0.3) {
       return 'RR';
     }
@@ -310,7 +338,6 @@ export class LipSyncEngine {
     return amplitude > 0.08 ? 'aa' : 'neutral';
   }
 
-  // Smooth viseme transitions (improved)
   private smoothVisemes(frames: VisemeFrame[]): VisemeFrame[] {
     if (frames.length < 5) return frames;
 
@@ -322,7 +349,6 @@ export class LipSyncEngine {
         continue;
       }
 
-      // Look at neighbors
       const window = [
         frames[i - 2].viseme,
         frames[i - 1].viseme,
@@ -331,11 +357,9 @@ export class LipSyncEngine {
         frames[i + 2].viseme
       ];
 
-      // Count occurrences
       const counts: Record<string, number> = {};
       window.forEach(v => counts[v] = (counts[v] || 0) + 1);
 
-      // If current is isolated, replace with most common neighbor
       if (counts[frames[i].viseme] === 1) {
         const mostCommon = Object.entries(counts)
           .sort((a, b) => b[1] - a[1])[0][0];
@@ -348,13 +372,16 @@ export class LipSyncEngine {
     return smoothed;
   }
 
-  // Start playback
+  // ============================================================================
+  // PLAYBACK CONTROL
+  // ============================================================================
+
   private startPlayback(): void {
     this.isPlaying = true;
     this.startTime = Date.now();
+    console.log("▶️ Lip sync playback started");
   }
 
-  // Get current viseme
   getCurrentViseme(): string {
     if (!this.isPlaying) return 'neutral';
 
@@ -363,7 +390,7 @@ export class LipSyncEngine {
 
     if (frame) {
       if (this.currentViseme !== frame.viseme) {
-        console.log(`🗣️ Playing viseme: ${frame.viseme} at ${elapsed}ms`);
+        console.log(`🗣️ Viseme: ${frame.viseme} at ${elapsed}ms`);
       }
       this.currentViseme = frame.viseme;
       return frame.viseme;
@@ -380,29 +407,32 @@ export class LipSyncEngine {
     return this.currentViseme;
   }
 
-  // Get morph targets for current viseme
   getCurrentMorphTargets(): Expression {
     const viseme = this.getCurrentViseme();
     return VISEME_MAPPINGS[viseme] || VISEME_MAPPINGS.neutral;
   }
 
-  // Manual viseme control
-  setVisemeQueue(queue: VisemeFrame[]): void {
-    this.visemeQueue = queue;
-    this.startPlayback();
-  }
-
-  // Reset
   reset(): void {
     this.visemeQueue = [];
     this.currentViseme = 'neutral';
     this.isPlaying = false;
   }
 
-  // Stop
   stop(): void {
     this.isPlaying = false;
     this.currentViseme = 'neutral';
+  }
+
+  // ============================================================================
+  // GETTERS
+  // ============================================================================
+
+  getQueueLength(): number {
+    return this.visemeQueue.length;
+  }
+
+  isActive(): boolean {
+    return this.isPlaying;
   }
 }
 
@@ -410,7 +440,6 @@ export class LipSyncEngine {
 // UTILITY FUNCTIONS
 // ============================================================================
 
-// Interpolate between expressions
 export function lerpExpression(from: Expression, to: Expression, alpha: number): Expression {
   const result: Expression = { head: {}, teeth: {}, eyes: {} };
 
@@ -438,7 +467,6 @@ export function lerpExpression(from: Expression, to: Expression, alpha: number):
   return result;
 }
 
-// Apply expression to mesh refs
 export function applyExpression(
   expression: Expression,
   headRef: any,

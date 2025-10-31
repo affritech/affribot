@@ -4,9 +4,10 @@ import {
 } from "./audioworklet-registry";
 
 // ============================================
-// IMPORT LIP SYNC ENGINE (NEW)
+// IMPORT LIP SYNC SYSTEMS
 // ============================================
 import { LipSyncEngine } from "./LipSyncSystem";
+import { getRhubarbProcessor } from "./RhubarbLipSync";
 
 export class AudioStreamer {
   private sampleRate: number = 24000;
@@ -24,10 +25,16 @@ export class AudioStreamer {
   public onComplete = () => {};
 
   // ============================================
-  // NEW: LIP SYNC PROPERTIES (NON-BREAKING)
+  // LIP SYNC PROPERTIES
   // ============================================
   public lipSyncEngine: LipSyncEngine | null = null;
   private lipSyncEnabled: boolean = false;
+  private useRhubarb: boolean = true;
+  
+  // Accumulate audio for batch processing
+  private audioBuffer: Float32Array[] = [];
+  private audioBufferDuration: number = 0;
+  private readonly RHUBARB_BATCH_SIZE: number = 1.0; // Process 1 second chunks
 
   constructor(public context: AudioContext) {
     this.gainNode = this.context.createGain();
@@ -37,17 +44,16 @@ export class AudioStreamer {
   }
 
   // ============================================
-  // NEW: ENABLE LIP SYNC (OPTIONAL)
+  // ENABLE/DISABLE LIP SYNC
   // ============================================
+  
   enableLipSync(engine: LipSyncEngine): void {
     this.lipSyncEngine = engine;
+    this.lipSyncEngine.setAudioContext(this.context);
     this.lipSyncEnabled = true;
-    console.log("✅ Lip sync enabled");
+    console.log("✅ Lip sync enabled with Rhubarb");
   }
 
-  // ============================================
-  // NEW: DISABLE LIP SYNC (OPTIONAL)
-  // ============================================
   disableLipSync(): void {
     this.lipSyncEnabled = false;
     console.log("❌ Lip sync disabled");
@@ -100,19 +106,22 @@ export class AudioStreamer {
     let processingBuffer = this._processPCM16Chunk(chunk);
 
     // ============================================
-    // NEW: PROCESS AUDIO FOR LIP SYNC (NON-BREAKING)
+    // RHUBARB LIP SYNC PROCESSING
     // ============================================
-    if (this.lipSyncEnabled && this.lipSyncEngine) {
-      // Create a copy for lip sync analysis
-      const lipSyncBuffer = new Float32Array(processingBuffer);
-      try {
-        this.lipSyncEngine.processAudioData(lipSyncBuffer, Date.now());
-      } catch (error) {
-        console.error("Lip sync processing error:", error);
+    if (this.lipSyncEnabled && this.lipSyncEngine && this.useRhubarb) {
+      // Accumulate audio chunks
+      this.audioBuffer.push(new Float32Array(processingBuffer));
+      this.audioBufferDuration += processingBuffer.length / this.sampleRate;
+
+      // Process when we have enough audio
+      if (this.audioBufferDuration >= this.RHUBARB_BATCH_SIZE) {
+        this.processAccumulatedAudio();
       }
     }
-    // ============================================
 
+    // ============================================
+    // AUDIO PLAYBACK (unchanged)
+    // ============================================
     while (processingBuffer.length >= this.bufferSize) {
       const buffer = processingBuffer.slice(0, this.bufferSize);
       this.audioQueue.push(buffer);
@@ -127,6 +136,45 @@ export class AudioStreamer {
       this.isPlaying = true;
       this.scheduledTime = this.context.currentTime + this.initialBufferTime;
       this.scheduleNextBuffer();
+    }
+  }
+
+  // ============================================
+  // FIXED: Process accumulated audio with Rhubarb
+  // ============================================
+  private async processAccumulatedAudio(): Promise<void> {
+    if (this.audioBuffer.length === 0) return;
+
+    // Concatenate all buffered audio
+    const totalLength = this.audioBuffer.reduce((sum, buf) => sum + buf.length, 0);
+    const combinedAudio = new Float32Array(totalLength);
+    
+    let offset = 0;
+    for (const buffer of this.audioBuffer) {
+      combinedAudio.set(buffer, offset);
+      offset += buffer.length;
+    }
+
+    // Store the scheduled time BEFORE clearing buffer (important!)
+    const audioStartTime = this.scheduledTime;
+
+    // Clear buffer
+    this.audioBuffer = [];
+    this.audioBufferDuration = 0;
+
+    try {
+      // Process with Rhubarb
+      const rhubarbProcessor = getRhubarbProcessor();
+      const visemeFrames = await rhubarbProcessor.processAudio(combinedAudio, this.sampleRate);
+
+      if (visemeFrames.length > 0) {
+        // Add visemes with proper audio context timing
+        this.lipSyncEngine?.addVisemes(visemeFrames, audioStartTime);
+        
+        console.log(`🎤 Added ${visemeFrames.length} Rhubarb visemes at audio time ${audioStartTime.toFixed(3)}s`);
+      }
+    } catch (error) {
+      console.error("❌ Rhubarb processing error:", error);
     }
   }
 
@@ -224,15 +272,18 @@ export class AudioStreamer {
     this.audioQueue = [];
     this.scheduledTime = this.context.currentTime;
 
+    // Clear Rhubarb buffers
+    this.audioBuffer = [];
+    this.audioBufferDuration = 0;
+
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
     }
 
-    // ============================================
-    // NEW: STOP LIP SYNC (NON-BREAKING)
-    // ============================================
+    // FIXED: Clear future visemes and stop lip sync
     if (this.lipSyncEnabled && this.lipSyncEngine) {
+      this.lipSyncEngine.clearFutureVisemes();
       this.lipSyncEngine.stop();
     }
 
@@ -259,6 +310,12 @@ export class AudioStreamer {
 
   complete() {
     this.isStreamComplete = true;
+    
+    // Process any remaining audio
+    if (this.audioBuffer.length > 0) {
+      this.processAccumulatedAudio();
+    }
+    
     this.onComplete();
   }
 }

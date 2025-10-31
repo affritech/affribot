@@ -57,7 +57,7 @@ function App() {
               onVideoStreamChange={setVideoStream}
               enableEditingSettings={true}
             >
-              {/* put your own buttons here */}
+              {/* put your own buttons here a */}
             </ControlTray>
           </main>
         </div>

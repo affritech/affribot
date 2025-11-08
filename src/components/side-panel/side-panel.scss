@@ -1,0 +1,39 @@
+.side-panel {
+  /* HIDDEN - Console not needed for user interface */
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+  
+  /* Keep original styles below for potential developer debugging mode */
+  background: var(--Neutral-00);
+  width: 0;
+  flex-direction: column;
+  height: 100vh;
+  transition: all 0.2s ease-in;
+  font-family: Arial, sans-serif;
+  border-right: 1px solid var(--gray-600);
+  color: var(--Neutral-90, #e1e2e3);
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 160%;
+}
+
+/* All other styles preserved but won't render due to display: none */
+.hidden {
+  display: none !important;
+}
+
+.side-panel.open {
+  display: none !important;
+}
+
+.side-panel-responses,
+.side-panel-requests {
+  display: none;
+}
+
+.top {
+  display: none;
+}

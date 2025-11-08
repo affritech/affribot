@@ -1,0 +1,60 @@
+.chat-button {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: #1a73e8;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 56px;
+  height: 56px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.chat-button:hover {
+  background: #1557b0;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.chat-button .material-icons {
+  font-size: 24px;
+}
+
+.zoom-button {
+  position: fixed;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: #1a73e8;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  z-index: 1000;
+}
+
+.zoom-button:hover {
+  background: #1557b0;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.zoom-button .material-icons {
+  font-size: 24px;
+}
+
+.zoom-in {
+  top: 90px;
+}
+
+.zoom-out {
+  top: 160px;
+}

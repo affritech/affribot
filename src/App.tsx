@@ -7,7 +7,7 @@ import { Experience } from "./components/Experience";
 import { LiveAPIProvider } from "./contexts/LiveAPIContext";
 import { Altair } from "./components/altair/Altair";
 import ControlTray from "./components/control-tray/ControlTray";
-import AvatarCustomizer from "./components/AvatarCustomizer";
+//import AvatarCustomizer from "./components/AvatarCustomizer";
 import LoadingScreen from "./components/LoadingScreen";
 import cn from "classnames";
 import { LiveClientOptions } from "./types";

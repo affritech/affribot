@@ -35,7 +35,7 @@ function App() {
 
   // Debug: Log when isModelLoaded changes
   useEffect(() => {
-    console.log("📊 isModelLoaded changed to:", isModelLoaded);
+    console.log("📊 isModelLoaded changed to: ", isModelLoaded);
   }, [isModelLoaded]);
 
   return (
@@ -54,7 +54,7 @@ function App() {
                   onModelLoaded={() => setIsModelLoaded(true)}
                 />
               </Canvas>
-              <Altair />
+              <Altair/>
               <video
                 className={cn("stream", {
                   hidden: !videoRef.current || !videoStream,
@@ -80,3 +80,4 @@ function App() {
 }
 
 export default App;
+

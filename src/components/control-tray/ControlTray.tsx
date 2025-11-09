@@ -161,7 +161,7 @@ function ControlTray({
 
           {supportsVideo && (
             <>
-              <MediaStreamButton
+              <MediaStreamButton style = {{ display: "noneclear "}}
                 isStreaming={screenCapture.isStreaming}
                 start={changeStreams(screenCapture)}
                 stop={changeStreams()}

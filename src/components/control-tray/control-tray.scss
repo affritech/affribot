@@ -2,7 +2,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(32, 32, 32, 0.8);
+  background: rgba(77, 165, 5, 0.826);
   backdrop-filter: blur(10px);
   color: var(--Neutral-60);
   font-size: 1.25rem;
@@ -38,13 +38,13 @@
   }
 
   &.connected {
-    background: rgba(31, 148, 255, 0.2);
+    background: rgba(137, 241, 27, 0.2);
     color: var(--Blue-500);
-    border-color: rgba(31, 148, 255, 0.3);
+    border-color: rgba(255, 42, 31, 0.3);
 
     &:hover {
       border-color: var(--Blue-500);
-      background: rgba(31, 148, 255, 0.3);
+      background: rgba(80, 249, 2, 0.3);
     }
   }
 }
@@ -62,7 +62,7 @@
   color: white;
   transition: all 0.2s ease-in;
   border: none;
-  box-shadow: 0 4px 12px rgba(255, 70, 0, 0.3);
+  
 
   &:hover {
     background: linear-gradient(135deg, #ff5722 0%, #ff4600 100%);
@@ -95,14 +95,12 @@
 }
 
 .connect-toggle {
-  background: linear-gradient(135deg, #1f94ff 0%, #0d6efd 100%);
+  background: rgb(112, 211, 101);
   color: white;
   border: none;
-  box-shadow: 0 4px 12px rgba(31, 148, 255, 0.3);
-
+  
   &:hover {
-    background: linear-gradient(135deg, #3da5ff 0%, #1f94ff 100%);
-    box-shadow: 0 6px 16px rgba(31, 148, 255, 0.4);
+    background: rgb(247, 247, 7);
     transform: scale(1.05);
   }
 
@@ -112,7 +110,7 @@
   }
 
   &.connected {
-    background: rgba(31, 148, 255, 0.3);
+    background: rgba(109, 255, 31, 0.3);
     border: 1px solid rgba(31, 148, 255, 0.5);
   }
 }

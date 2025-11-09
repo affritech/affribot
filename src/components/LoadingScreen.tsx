@@ -6,32 +6,37 @@ interface LoadingScreenProps {
 
 export default function LoadingScreen({ isModelLoaded }: LoadingScreenProps) {
   const [progress, setProgress] = useState(0);
+  const [fadeOut, setFadeOut] = useState(false);
 
-   useEffect(() => {
-    // Simulate loading progress
+  useEffect(() => {
+    // Faster, more realistic progress
     const progressInterval = setInterval(() => {
       setProgress(prev => {
-        if (prev >= 95) {
+        if (prev >= 90) {
           clearInterval(progressInterval);
-          return 95; // Stop at 95% until model loads
+          return 90; // Stop at 90% until model loads
         }
-        return prev + 5;
+        // Faster increments
+        return prev + 10;
       });
-    }, 100);
-    return () => {
-      clearInterval(progressInterval);
-    };
+    }, 80); // Faster updates (was 100ms)
+    
+    return () => clearInterval(progressInterval);
   }, []);
 
   // Jump to 100% when model loads
   useEffect(() => {
     if (isModelLoaded) {
       setProgress(100);
+      // Start fade out immediately
+      setTimeout(() => {
+        setFadeOut(true);
+      }, 300);
     }
   }, [isModelLoaded]);
 
-  // Don't unmount until model is loaded
-  if (isModelLoaded && progress === 100) {
+  // Remove component after fade out
+  if (fadeOut) {
     return null;
   }
 
@@ -49,17 +54,13 @@ export default function LoadingScreen({ isModelLoaded }: LoadingScreenProps) {
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 10000,
-        animation: isModelLoaded && progress === 100 ? 'fadeOut 0.8s ease-out forwards' : 'none',
-        overflow: 'hidden'
+        opacity: isModelLoaded ? 0 : 1,
+        transition: 'opacity 0.5s ease-out',
+        overflow: 'hidden',
+        pointerEvents: isModelLoaded ? 'none' : 'auto'
       }}
     >
       <style>{`
-        @keyframes fadeOut {
-          to { 
-            opacity: 0; 
-            pointer-events: none; 
-          }
-        }
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
@@ -88,43 +89,11 @@ export default function LoadingScreen({ isModelLoaded }: LoadingScreenProps) {
             opacity: 1;
           }
         }
-        @keyframes particles {
-          0% { 
-            transform: translateY(0) translateX(0) scale(0);
-            opacity: 0;
-          }
-          50% {
-            opacity: 1;
-          }
-          100% { 
-            transform: translateY(-100vh) translateX(var(--tx)) scale(1);
-            opacity: 0;
-          }
-        }
         @keyframes logoGlow {
           0%, 100% { filter: drop-shadow(0 0 8px rgba(185, 28, 28, 0.3)); }
           50% { filter: drop-shadow(0 0 20px rgba(185, 28, 28, 0.6)); }
         }
       `}</style>
-
-      {/* Animated Background Particles with brand colors */}
-      {[...Array(15)].map((_, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'absolute',
-            width: '4px',
-            height: '4px',
-            background: i % 3 === 0 ? '#b91c1c' : i % 3 === 1 ? '#15803d' : '#ca8a04',
-            borderRadius: '50%',
-            left: `${Math.random() * 100}%`,
-            bottom: '-10px',
-            animation: `particles ${4 + Math.random() * 3}s ease-in ${Math.random() * 2}s infinite`,
-            '--tx': `${(Math.random() - 0.5) * 200}px`,
-            boxShadow: '0 0 8px currentColor'
-          } as React.CSSProperties}
-        />
-      ))}
 
       {/* Main Content Container */}
       <div style={{
@@ -163,17 +132,6 @@ export default function LoadingScreen({ isModelLoaded }: LoadingScreenProps) {
             transform: 'translateX(-50%)',
             boxShadow: '0 0 15px #15803d'
           }} />
-          <div style={{
-            position: 'absolute',
-            width: '8px',
-            height: '8px',
-            background: '#ca8a04',
-            borderRadius: '50%',
-            top: '50%',
-            right: '0',
-            transform: 'translateY(-50%)',
-            boxShadow: '0 0 15px #ca8a04'
-          }} />
         </div>
 
         {/* Logo Container */}
@@ -195,7 +153,7 @@ export default function LoadingScreen({ isModelLoaded }: LoadingScreenProps) {
             filter: 'blur(30px)'
           }} />
 
-          {/* Spinning Rings with brand colors */}
+          {/* Spinning Rings */}
           <div style={{
             position: 'absolute',
             width: '180px',
@@ -226,20 +184,6 @@ export default function LoadingScreen({ isModelLoaded }: LoadingScreenProps) {
             opacity: 0.6
           }} />
 
-          <div style={{
-            position: 'absolute',
-            width: '140px',
-            height: '140px',
-            left: '50%',
-            top: '50%',
-            transform: 'translate(-50%, -50%)',
-            border: '2px solid transparent',
-            borderTopColor: '#ca8a04',
-            borderRadius: '50%',
-            animation: 'spin 2s linear infinite',
-            opacity: 0.5
-          }} />
-
           {/* Afrimerge Logo */}
           <div style={{
             width: '140px',
@@ -263,6 +207,10 @@ export default function LoadingScreen({ isModelLoaded }: LoadingScreenProps) {
                 borderRadius: '50%',
                 objectFit: 'contain',
                 animation: 'logoGlow 3s ease-in-out infinite'
+              }}
+              onError={(e) => {
+                console.error('Logo failed to load');
+                e.currentTarget.style.display = 'none';
               }}
             />
 
@@ -324,7 +272,7 @@ export default function LoadingScreen({ isModelLoaded }: LoadingScreenProps) {
           Powering Innovation Across Africa
         </p>
 
-        {/* Modern Progress Bar */}
+        {/* Progress Bar */}
         <div style={{
           width: '360px',
           maxWidth: '85vw',
@@ -382,11 +330,11 @@ export default function LoadingScreen({ isModelLoaded }: LoadingScreenProps) {
               fontSize: '0.75rem',
               fontWeight: '500'
             }}>
-              {progress < 25 ? 'Initializing...' : 
-               progress < 50 ? 'Loading modules...' : 
-               progress < 75 ? 'Processing data...' : 
-               progress < 95 ? 'Almost ready...' :
-               'Finalizing...'}
+              {progress < 30 ? 'Initializing...' : 
+               progress < 60 ? 'Loading model...' : 
+               progress < 90 ? 'Almost ready...' :
+               progress < 100 ? 'Finalizing...' :
+               'Complete!'}
             </div>
           </div>
         </div>

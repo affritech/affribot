@@ -23,7 +23,7 @@ export function Avatar(props) {
   const headRef = useRef();
   const lipSyncEngine = useRef(new LipSyncEngine());
   const [currentViseme, setCurrentViseme] = useState('neutral');
-  const previousExpression = useRef(VISEME_MAPPINGS.neutral);
+  const previousExpression = useRef({ head: {}, teeth: {}, eyes: {} });
   const [lipSyncEnabled, setLipSyncEnabled] = useState(true);
   
   // Track which animation URL to load
@@ -41,26 +41,85 @@ export function Avatar(props) {
   // Preload next animation
   const { animations: nextAnimations } = useFBX(nextAnimationUrl || currentAnimationUrl);
 
-  // Prepare current animation - FIXED: Check for Hips bone
+  // Store which morph targets are lip sync targets (to exclude from animation)
+  const lipSyncMorphIndices = useRef(new Set());
+  const hasInitializedMorphs = useRef(false);
+
+  // Initialize lip sync morph indices once
+  useEffect(() => {
+    if (!headRef.current || hasInitializedMorphs.current) return;
+    
+    const morphDict = headRef.current.morphTargetDictionary;
+    if (!morphDict) {
+      console.warn("⚠️ No morph targets found on model");
+      return;
+    }
+
+    console.log("📋 Available morph targets:", Object.keys(morphDict));
+    console.log("📋 Total morph count:", Object.keys(morphDict).length);
+
+    // Identify which morph indices are used for lip sync
+    const lipSyncKeys = Object.keys(VISEME_MAPPINGS.neutral.head || {});
+    console.log("🔍 Looking for these lip sync keys:", lipSyncKeys);
+    
+    const foundKeys = [];
+    const missingKeys = [];
+    
+    lipSyncKeys.forEach(key => {
+      if (morphDict[key] !== undefined) {
+        lipSyncMorphIndices.current.add(morphDict[key]);
+        foundKeys.push(key);
+      } else {
+        missingKeys.push(key);
+      }
+    });
+
+    console.log(`✅ Found ${lipSyncMorphIndices.current.size} lip sync morph targets:`, foundKeys);
+    if (missingKeys.length > 0) {
+      console.warn("⚠️ Missing lip sync morph targets:", missingKeys);
+    }
+    
+    hasInitializedMorphs.current = true;
+  }, [nodes]);
+
+  // Prepare current animation
   const animationList = currentAnimations && currentAnimations.length > 0 && nodes.Hips
     ? currentAnimations.map((clip) => {
         const newClip = clip.clone();
         newClip.name = currentAnimationName;
+        
+        // CRITICAL: Remove mouth morph target tracks from animation
+        // so they don't conflict with lip sync
+        newClip.tracks = newClip.tracks.filter(track => {
+          // Check if this track controls a morph target
+          if (track.name.includes('morphTargetInfluences')) {
+            // Extract the morph index from the track name
+            const match = track.name.match(/\[(\d+)\]/);
+            if (match) {
+              const morphIndex = parseInt(match[1]);
+              // Keep the track only if it's NOT a lip sync morph
+              return !lipSyncMorphIndices.current.has(morphIndex);
+            }
+          }
+          return true; // Keep all non-morph tracks
+        });
+        
         return newClip;
       })
     : [];
 
   const { actions, mixer } = useAnimations(animationList, group);
 
-  // ✅ Call onModelLoaded when model is ready - resets on avatarUrl change
+  // Call onModelLoaded when model is ready
   const hasCalledOnLoad = useRef(false);
   const lastAvatarUrl = useRef(avatarUrl);
   
   useEffect(() => {
-    // Reset flag when avatar URL actually changes
     if (lastAvatarUrl.current !== avatarUrl) {
       console.log("🔄 Avatar URL changed, resetting load flag");
       hasCalledOnLoad.current = false;
+      hasInitializedMorphs.current = false;
+      lipSyncMorphIndices.current.clear();
       lastAvatarUrl.current = avatarUrl;
     }
   }, [avatarUrl]);
@@ -69,7 +128,6 @@ export function Avatar(props) {
     if (nodes && materials && currentAnimations && nodes.Hips && onModelLoaded && !hasCalledOnLoad.current) {
       hasCalledOnLoad.current = true;
       console.log("✅ Model fully loaded and ready");
-      // Small delay to ensure everything is rendered
       const timer = setTimeout(() => {
         onModelLoaded();
       }, 100);
@@ -78,7 +136,7 @@ export function Avatar(props) {
     }
   }, [nodes, materials, currentAnimations, avatarUrl, onModelLoaded]);
 
-  // Play animation and keep reference
+  // Play animation
   useEffect(() => {
     if (!actions || !actions[currentAnimationName]) {
       return;
@@ -87,27 +145,20 @@ export function Avatar(props) {
     console.log(`✅ Playing: ${currentAnimationName}`);
     
     const action = actions[currentAnimationName];
-    
-    // Configure loop settings BEFORE playing
     action.setLoop(THREE.LoopRepeat, Infinity);
     action.clampWhenFinished = false;
     action.reset();
     
-    // If there's a current action, crossfade to new one
     if (currentActionRef.current && currentActionRef.current !== action) {
       currentActionRef.current.crossFadeTo(action, 0.3, true);
     }
     
     action.setEffectiveWeight(1);
     action.play();
-    
-    // Store reference to current action
     currentActionRef.current = action;
 
-    // Cleanup function
     return () => {
-      // Don't stop the action immediately on cleanup
-      // Let the crossfade handle transitions
+      // Cleanup handled by crossfade
     };
   }, [actions, currentAnimationName]);
 
@@ -121,7 +172,6 @@ export function Avatar(props) {
         return;
       }
 
-      // Clear any pending timeout
       if (animationTimeoutRef.current) {
         clearTimeout(animationTimeoutRef.current);
         animationTimeoutRef.current = null;
@@ -129,20 +179,16 @@ export function Avatar(props) {
 
       console.log(`🎬 Switching to: ${animName}${duration ? ` for ${duration}s` : ''}`);
       
-      // Get the animation URL and info
       const animUrl = getAnimationUrl(animName);
       const animInfo = getAnimationInfo(animName);
       
-      // Preload next animation first
       setNextAnimationUrl(animUrl);
       
-      // Wait a frame for preload to start, then switch
       requestAnimationFrame(() => {
         setCurrentAnimationUrl(animUrl);
         setCurrentAnimationName(animName);
       });
       
-      // ALWAYS return to Idle after duration or animation completes
       if (duration) {
         animationTimeoutRef.current = setTimeout(() => {
           console.log(`⏰ Returning to Idle after ${duration}s`);
@@ -153,7 +199,6 @@ export function Avatar(props) {
           });
         }, duration * 1000);
       } else if (!animInfo?.loop && currentAnimations?.[0]) {
-        // For non-looping animations, return to Idle
         const clip = currentAnimations[0];
         const returnTime = Math.max(clip.duration * 1000, 3000);
         animationTimeoutRef.current = setTimeout(() => {
@@ -193,53 +238,64 @@ export function Avatar(props) {
     }
   }, [audioStreamer, lipSyncEnabled]);
 
-  // Store base morph influences from animation
-  const baseMorphInfluences = useRef(null);
-
-  // Animation loop
+  // Animation loop - SIMPLIFIED
   useFrame((state, delta) => {
-    if (!group.current) return;
+    if (!lipSyncEnabled || !headRef.current || !headRef.current.morphTargetInfluences) return;
 
-    // Capture base morph influences from animation BEFORE applying lip sync
-    if (headRef.current && headRef.current.morphTargetInfluences) {
-      if (!baseMorphInfluences.current) {
-        baseMorphInfluences.current = new Float32Array(headRef.current.morphTargetInfluences.length);
-      }
-      // Store current animation-driven morph values
-      baseMorphInfluences.current.set(headRef.current.morphTargetInfluences);
+    const newViseme = lipSyncEngine.current.getCurrentViseme();
+    
+    if (newViseme !== currentViseme) {
+      setCurrentViseme(newViseme);
+      console.log("🗣️ Current viseme:", newViseme);
     }
 
-    // Apply lip sync ADDITIVELY on top of animation morphs
-    if (lipSyncEnabled && headRef.current && headRef.current.morphTargetInfluences) {
-      const newViseme = lipSyncEngine.current.getCurrentViseme();
-      
-      if (newViseme !== currentViseme) {
-        setCurrentViseme(newViseme);
-      }
+    // Get the Expression object (has head, teeth, eyes properties)
+    const targetExpression = lipSyncEngine.current.getCurrentMorphTargets();
+    
+    // Extract just the head morphs
+    const targetHeadMorphs = targetExpression.head || {};
+    
+    // Debug: Log when we have non-zero targets
+    const hasActiveTargets = Object.values(targetHeadMorphs).some(v => v > 0.01);
+    if (hasActiveTargets && Math.random() < 0.1) { // Log 10% of frames to avoid spam
+      console.log("📊 Target head morphs:", targetHeadMorphs);
+    }
+    
+    // Smooth the transition between visemes (using just head morphs)
+    const prevHeadMorphs = previousExpression.current.head || {};
+    const smoothedHeadMorphs = {};
+    
+    const allKeys = new Set([...Object.keys(prevHeadMorphs), ...Object.keys(targetHeadMorphs)]);
+    allKeys.forEach(key => {
+      const fromVal = prevHeadMorphs[key] || 0;
+      const toVal = targetHeadMorphs[key] || 0;
+      smoothedHeadMorphs[key] = fromVal + (toVal - fromVal) * Math.min(delta * 20, 1);
+    });
 
-      const targetExpression = lipSyncEngine.current.getCurrentMorphTargets();
+    // Apply lip sync morphs directly (animation no longer controls these)
+    const morphDict = headRef.current.morphTargetDictionary;
+    if (morphDict) {
+      let appliedCount = 0;
+      let debugInfo = [];
       
-      const smoothedExpression = lerpExpression(
-        previousExpression.current,
-        targetExpression,
-        Math.min(delta * 15, 1)
-      );
-
-      // Apply lip sync morphs additively on top of base animation morphs
-      const morphDict = nodes.Wolf3D_Avatar?.morphTargetDictionary || nodes.Wolf3D_Head?.morphTargetDictionary;
-      if (morphDict) {
-        Object.keys(smoothedExpression).forEach((key) => {
-          const morphIndex = morphDict[key];
-          if (morphIndex !== undefined && baseMorphInfluences.current) {
-            // Add lip sync influence to base animation influence
-            headRef.current.morphTargetInfluences[morphIndex] = 
-              Math.min(1.0, baseMorphInfluences.current[morphIndex] + smoothedExpression[key]);
+      Object.keys(smoothedHeadMorphs).forEach((key) => {
+        const morphIndex = morphDict[key];
+        if (morphIndex !== undefined) {
+          const value = smoothedHeadMorphs[key];
+          if (value > 0.01) {
+            appliedCount++;
+            debugInfo.push(`${key}=${value.toFixed(2)}`);
           }
-        });
+          headRef.current.morphTargetInfluences[morphIndex] = value;
+        }
+      });
+      
+      if (appliedCount > 0 && Math.random() < 0.1) {
+        console.log(`✅ Applied ${appliedCount} morphs:`, debugInfo.join(', '));
       }
-
-      previousExpression.current = smoothedExpression;
     }
+
+    previousExpression.current = targetExpression;
   });
 
   return (
@@ -247,7 +303,6 @@ export function Avatar(props) {
       <group>
         {nodes.Hips && <primitive object={nodes.Hips} />}
         
-        {/* Fallback for models without Wolf3D_Avatar - look for any mesh with morphTargets */}
         {nodes.Wolf3D_Avatar ? (
           <skinnedMesh
             ref={headRef}
@@ -275,4 +330,3 @@ export function Avatar(props) {
 }
 
 useGLTF.preload("https://models.readyplayer.me/690e977337697c47c8baa5a7.glb?morphTargets=ARKit,Oculus+Visemes");
-// useGLTF.preload("https://files.catbox.moe/yvr97o.glb");

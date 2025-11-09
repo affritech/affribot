@@ -18,115 +18,14 @@ export interface AnimationInfo {
  * Animation Library - All Real URLs
  */
 export const ANIMATIONS: Record<string, AnimationInfo> = {
-  Idle: {
-    name: "Idle",
-    url: "animations/Idle.fbx",
-    description: "Natural standing pose",
-    emoji: "🧍",
-    loop: true,
-  },
-  
-  Yelling: {
-    name: "Yelling",
-    url: "https://files.catbox.moe/nzr49d.fbx",
-    description: "Shouting or calling out loudly",
-    emoji: "📢",
-    loop: true,
-    isTalkingAnimation: true, // NEW: This syncs with audio
-  },
-  
-  Standing: {
-    name: "Standing",
-    url: "https://files.catbox.moe/c5h4l8.fbx",
-    description: "Calm standing position",
-    emoji: "🧍",
-    loop: true,
-  },
-  
   Talking: {
     name: "Talking",
-    url: "https://files.catbox.moe/b55eha.fbx",
-    description: "Conversational gestures style 1",
-    emoji: "💬",
-    loop: true,
-    isTalkingAnimation: true, // NEW: This syncs with audio
-  },
-  
-  Talking3: {
-    name: "Talking3",
-    url: "https://files.catbox.moe/kx5fnn.fbx",
-    description: "Conversational gestures style 3",
-    emoji: "💭",
-    loop: true,
-    isTalkingAnimation: true, // NEW: This syncs with audio
-  },
-  
-  Meeting: {
-    name: "Meeting",
-    url: "https://files.catbox.moe/0y2445.fbx",
-    description: "Professional meeting posture",
-    emoji: "👔",
+    url: "https://files.catbox.moe/t5np2m.fbx",
+    description: "Talking while moving the hands",
+    emoji: "🧍",
     loop: true,
   },
   
-  Backflip1: {
-    name: "Backflip1",
-    url: "https://files.catbox.moe/j0nair.fbx",
-    description: "Acrobatic backflip",
-    emoji: "🤸",
-    duration: 2,
-    loop: false,
-  },
-  
-  Backflip2: {
-    name: "Backflip2",
-    url: "https://files.catbox.moe/j0nair.fbx",
-    description: "Another backflip variation",
-    emoji: "🤸",
-    duration: 2,
-    loop: false,
-  },
-  
-  Jumping: {
-    name: "Jumping",
-    url: "https://files.catbox.moe/r7vhjj.fbx",
-    description: "Excited jump",
-    emoji: "🦘",
-    duration: 2,
-    loop: false,
-  },
-  
-  HipHopDance: {
-    name: "HipHopDance",
-    url: "https://files.catbox.moe/nyd0yx.fbx",
-    description: "Urban hip hop dance moves",
-    emoji: "🎤",
-    loop: true,
-  },
-  
-  JazzDance: {
-    name: "JazzDance",
-    url: "https://files.catbox.moe/hukryu.fbx",
-    description: "Smooth jazz dance routine",
-    emoji: "🎺",
-    loop: true,
-  },
-  
-  SalsaDance: {
-    name: "SalsaDance",
-    url: "https://files.catbox.moe/pu9e67.fbx",
-    description: "Latin salsa dance moves",
-    emoji: "💃",
-    loop: true,
-  },
-  
-  DwarfIdle: {
-    name: "DwarfIdle",
-    url: "https://files.catbox.moe/sb9wzp.fbx",
-    description: "Quirky dwarf-style idle stance",
-    emoji: "🧙",
-    loop: true,
-  },
 };
 
 /**

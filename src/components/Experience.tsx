@@ -3,6 +3,7 @@ import {
   Environment,
   OrbitControls,
   Sky,
+  useGLTF,
 } from "@react-three/drei";
 import { Avatar } from "./Model";
 import { useRef, useEffect } from "react";
@@ -12,6 +13,11 @@ interface ExperienceProps {
   avatarUrl?: string;
   onModelLoaded?: () => void;
 }
+
+const RoomModel = () => {
+  const { scene } = useGLTF("https://files.catbox.moe/yq7iu3.glb");
+  return <primitive object={scene} />;
+};
 
 export const Experience = ({ avatarUrl, onModelLoaded }: ExperienceProps) => {
   const controlsRef = useRef<any>(null);
@@ -35,10 +41,10 @@ export const Experience = ({ avatarUrl, onModelLoaded }: ExperienceProps) => {
       <OrbitControls 
         ref={controlsRef}
         enableZoom={true}
-        enablePan={false}
+        enablePan={true}
         enableRotate={true}
         minDistance={2}
-        maxDistance={10}
+        maxDistance={20}
         maxPolarAngle={Math.PI / 2}
       />
       <Sky />
@@ -54,11 +60,15 @@ export const Experience = ({ avatarUrl, onModelLoaded }: ExperienceProps) => {
           color="#000000"
         />
         
+        {/* Room Model */}
+        <RoomModel />
+        
+        {/* Avatar */}
         <Avatar 
           animation="Idle" 
           avatarUrl={avatarUrl}
           rotation={[-Math.PI / 2, 0, 0]} 
-          position={[0, 0, 0]}
+          position={[-1.5, 0, 1.3]}
           onModelLoaded={onModelLoaded}
         />
         

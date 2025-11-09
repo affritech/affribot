@@ -23,7 +23,7 @@ export const ANIMATIONS: Record<string, AnimationInfo> = {
     url: "https://files.catbox.moe/t5np2m.fbx",
     description: "Talking while moving the hands",
     emoji: "🧍",
-    loop: true,
+    loop: false,
   },
   
 };

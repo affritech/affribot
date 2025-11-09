@@ -30,8 +30,10 @@ export function Avatar(props) {
   const [currentAnimationUrl, setCurrentAnimationUrl] = useState("https://files.catbox.moe/0y2445.fbx");
   const [currentAnimationName, setCurrentAnimationName] = useState("Idle");
   const [nextAnimationUrl, setNextAnimationUrl] = useState(null);
+  const [isTalking, setIsTalking] = useState(false);
   const animationTimeoutRef = useRef(null);
   const currentActionRef = useRef(null);
+  const talkingTimeoutRef = useRef(null);
   
   const { audioStreamer } = useLiveAPIContext();
 
@@ -88,21 +90,37 @@ export function Avatar(props) {
         const newClip = clip.clone();
         newClip.name = currentAnimationName;
         
-        // CRITICAL: Remove mouth morph target tracks from animation
-        // so they don't conflict with lip sync
-        newClip.tracks = newClip.tracks.filter(track => {
-          // Check if this track controls a morph target
-          if (track.name.includes('morphTargetInfluences')) {
-            // Extract the morph index from the track name
-            const match = track.name.match(/\[(\d+)\]/);
-            if (match) {
-              const morphIndex = parseInt(match[1]);
-              // Keep the track only if it's NOT a lip sync morph
-              return !lipSyncMorphIndices.current.has(morphIndex);
+        // CRITICAL: Only remove mouth morph tracks if we have identified them
+        // Don't remove tracks if we haven't initialized morph detection yet
+        if (lipSyncMorphIndices.current.size > 0) {
+          const originalTrackCount = newClip.tracks.length;
+          
+          newClip.tracks = newClip.tracks.filter(track => {
+            // Check if this track controls a morph target
+            if (track.name.includes('morphTargetInfluences')) {
+              // Extract the morph index from the track name
+              // Format is usually: ".morphTargetInfluences[12]"
+              const match = track.name.match(/\[(\d+)\]/);
+              if (match) {
+                const morphIndex = parseInt(match[1]);
+                // Keep the track only if it's NOT a lip sync morph
+                const shouldKeep = !lipSyncMorphIndices.current.has(morphIndex);
+                if (!shouldKeep) {
+                  console.log(`🚫 Removing lip sync morph track [${morphIndex}] from animation`);
+                }
+                return shouldKeep;
+              }
             }
+            return true; // Keep all non-morph tracks (bones, etc.)
+          });
+          
+          const removedCount = originalTrackCount - newClip.tracks.length;
+          if (removedCount > 0) {
+            console.log(`✂️ Removed ${removedCount} lip sync tracks from ${currentAnimationName}`);
           }
-          return true; // Keep all non-morph tracks
-        });
+        } else {
+          console.log(`⚠️ Morph indices not initialized yet, keeping all animation tracks`);
+        }
         
         return newClip;
       })
@@ -233,6 +251,9 @@ export function Avatar(props) {
         if (audioStreamer) {
           audioStreamer.disableLipSync();
         }
+        if (talkingTimeoutRef.current) {
+          clearTimeout(talkingTimeoutRef.current);
+        }
         lipSyncEngine.current.stop();
       };
     }
@@ -243,6 +264,12 @@ export function Avatar(props) {
     if (!lipSyncEnabled || !headRef.current || !headRef.current.morphTargetInfluences) return;
 
     const newViseme = lipSyncEngine.current.getCurrentViseme();
+    
+    // Debug: Check lip sync status periodically
+    if (Math.random() < 0.02) { // 2% of frames
+      const debugInfo = lipSyncEngine.current.getDebugInfo();
+      console.log("🔍 Lip sync debug:", debugInfo);
+    }
     
     if (newViseme !== currentViseme) {
       setCurrentViseme(newViseme);
@@ -255,10 +282,42 @@ export function Avatar(props) {
     // Extract just the head morphs
     const targetHeadMorphs = targetExpression.head || {};
     
-    // Debug: Log when we have non-zero targets
-    const hasActiveTargets = Object.values(targetHeadMorphs).some(v => v > 0.01);
-    if (hasActiveTargets && Math.random() < 0.1) { // Log 10% of frames to avoid spam
-      console.log("📊 Target head morphs:", targetHeadMorphs);
+    // Check if actually talking (any significant mouth movement)
+    const isMouthMoving = Object.values(targetHeadMorphs).some(v => v > 0.05);
+    
+    // Update talking state for animation switching
+    if (isMouthMoving !== isTalking) {
+      setIsTalking(isMouthMoving);
+      
+      if (isMouthMoving) {
+        console.log("🗣️ Mouth moving - switching to Talking animation");
+        
+        // Clear any existing talking timeout
+        if (talkingTimeoutRef.current) {
+          clearTimeout(talkingTimeoutRef.current);
+        }
+        
+        // Only switch if currently in Idle
+        if (currentAnimationName === 'Idle' && isValidAnimation('Talking')) {
+          const talkingUrl = getAnimationUrl('Talking');
+          setNextAnimationUrl(talkingUrl);
+          requestAnimationFrame(() => {
+            setCurrentAnimationUrl(talkingUrl);
+            setCurrentAnimationName('Talking');
+          });
+        }
+      } else if (!isMouthMoving && currentAnimationName === 'Talking') {
+        console.log("🤐 Mouth stopped - returning to Idle soon");
+        
+        // Return to Idle after a delay
+        talkingTimeoutRef.current = setTimeout(() => {
+          setNextAnimationUrl("https://files.catbox.moe/0y2445.fbx");
+          requestAnimationFrame(() => {
+            setCurrentAnimationUrl("https://files.catbox.moe/0y2445.fbx");
+            setCurrentAnimationName("Idle");
+          });
+        }, 1000); // 1 second delay
+      }
     }
     
     // Smooth the transition between visemes (using just head morphs)
@@ -275,24 +334,13 @@ export function Avatar(props) {
     // Apply lip sync morphs directly (animation no longer controls these)
     const morphDict = headRef.current.morphTargetDictionary;
     if (morphDict) {
-      let appliedCount = 0;
-      let debugInfo = [];
-      
       Object.keys(smoothedHeadMorphs).forEach((key) => {
         const morphIndex = morphDict[key];
         if (morphIndex !== undefined) {
           const value = smoothedHeadMorphs[key];
-          if (value > 0.01) {
-            appliedCount++;
-            debugInfo.push(`${key}=${value.toFixed(2)}`);
-          }
           headRef.current.morphTargetInfluences[morphIndex] = value;
         }
       });
-      
-      if (appliedCount > 0 && Math.random() < 0.1) {
-        console.log(`✅ Applied ${appliedCount} morphs:`, debugInfo.join(', '));
-      }
     }
 
     previousExpression.current = targetExpression;

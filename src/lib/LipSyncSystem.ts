@@ -1,5 +1,5 @@
 // ============================================================================
-// LIP SYNC SYSTEM - ARKit 52 Blend Shapes (FIXED WITH DEBUGGING)
+// LIP SYNC SYSTEM - ARKit 52 Blend Shapes (WITH ADJUSTED MAPPINGS)
 // ============================================================================
 
 export interface VisemeFrame {
@@ -19,150 +19,162 @@ export interface Expression {
 }
 
 // ============================================================================
-// VISEME MAPPINGS - REDUCED VALUES FOR NATURAL MOVEMENT
+// VISEME MAPPINGS - ADJUSTED FOR MORE NATURAL MOVEMENT
 // ============================================================================
 
 export const VISEME_MAPPINGS: Record<string, Expression> = {
   neutral: {
-    head: { mouthClose: 0.05 },
+    head: { mouthClose: 0.03 },
     teeth: {},
     eyes: {}
   },
   aa: {
     head: {
-      jawOpen: 0.25,
-      mouthOpen: 0.15,
-      mouthFunnel: 0.05
+      jawOpen: 0.3,
+      mouthOpen: 0.2,
+      mouthFunnel: 0.03
     },
     teeth: {},
     eyes: {}
   },
   E: {
     head: {
-      jawOpen: 0.15,
-      mouthStretchLeft: 0.1,
-      mouthStretchRight: 0.1,
-      mouthOpen: 0.08
+      jawOpen: 0.12,
+      mouthStretchLeft: 0.15,
+      mouthStretchRight: 0.15,
+      mouthOpen: 0.06
     },
     teeth: {},
     eyes: {}
   },
   I: {
     head: {
-      jawOpen: 0.1,
-      mouthStretchLeft: 0.15,
-      mouthStretchRight: 0.15,
-      mouthOpen: 0.05
+      jawOpen: 0.08,
+      mouthStretchLeft: 0.2,
+      mouthStretchRight: 0.2,
+      mouthOpen: 0.04
     },
     teeth: {},
     eyes: {}
   },
   O: {
     head: {
-      jawOpen: 0.2,
-      mouthFunnel: 0.2,
-      mouthPucker: 0.1
+      jawOpen: 0.18,
+      mouthFunnel: 0.25,
+      mouthPucker: 0.12
     },
     teeth: {},
     eyes: {}
   },
   U: {
     head: {
-      jawOpen: 0.1,
-      mouthFunnel: 0.25,
-      mouthPucker: 0.2
+      jawOpen: 0.08,
+      mouthFunnel: 0.3,
+      mouthPucker: 0.25
     },
     teeth: {},
     eyes: {}
   },
   PP: {
     head: {
-      mouthClose: 0.4,
-      mouthPressLeft: 0.15,
-      mouthPressRight: 0.15,
-      jawOpen: 0.02
+      mouthClose: 0.5,
+      mouthPressLeft: 0.2,
+      mouthPressRight: 0.2,
+      jawOpen: 0.01
     },
     teeth: {},
     eyes: {}
   },
   FF: {
     head: {
-      jawOpen: 0.08,
-      mouthRollLower: 0.1
+      jawOpen: 0.1,
+      mouthRollLower: 0.15
     },
     teeth: {},
     eyes: {}
   },
   TH: {
     head: {
-      jawOpen: 0.12,
-      mouthOpen: 0.08,
-      tongueOut: 0.15
+      jawOpen: 0.15,
+      mouthOpen: 0.1,
+      tongueOut: 0.2
     },
     teeth: {},
     eyes: {}
   },
   DD: {
     head: {
-      jawOpen: 0.1,
-      mouthOpen: 0.05
+      jawOpen: 0.12,
+      mouthOpen: 0.06
     },
     teeth: {},
     eyes: {}
   },
   kk: {
     head: {
-      jawOpen: 0.15,
-      mouthOpen: 0.1
+      jawOpen: 0.18,
+      mouthOpen: 0.12
     },
     teeth: {},
     eyes: {}
   },
   CH: {
     head: {
-      jawOpen: 0.1,
-      mouthFunnel: 0.15,
-      mouthPucker: 0.12
+      jawOpen: 0.12,
+      mouthFunnel: 0.18,
+      mouthPucker: 0.15
     },
     teeth: {},
     eyes: {}
   },
   SS: {
     head: {
-      jawOpen: 0.08,
-      mouthStretchLeft: 0.12,
-      mouthStretchRight: 0.12,
-      mouthClose: 0.1
+      jawOpen: 0.05,
+      mouthStretchLeft: 0.15,
+      mouthStretchRight: 0.15,
+      mouthClose: 0.08
     },
     teeth: {},
     eyes: {}
   },
   nn: {
     head: {
-      jawOpen: 0.08,
-      mouthClose: 0.2
+      jawOpen: 0.06,
+      mouthClose: 0.25
     },
     teeth: {},
     eyes: {}
   },
   RR: {
     head: {
-      jawOpen: 0.12,
-      mouthFunnel: 0.1,
-      mouthOpen: 0.08
+      jawOpen: 0.14,
+      mouthFunnel: 0.12,
+      mouthOpen: 0.1
     },
     teeth: {},
     eyes: {}
   },
   sil: {
     head: {
-      mouthClose: 0.1,
-      jawOpen: 0.02
+      mouthClose: 0.08,
+      jawOpen: 0.01
     },
     teeth: {},
     eyes: {}
   }
 };
+
+// ============================================================================
+// GLOBAL INTENSITY ADJUSTMENT (OPTIONAL)
+// Uncomment to scale all viseme values globally
+// ============================================================================
+
+// const GLOBAL_INTENSITY = 0.7; // 0.5 = very subtle, 1.0 = as defined, 1.5 = exaggerated
+// Object.keys(VISEME_MAPPINGS).forEach(viseme => {
+//   Object.keys(VISEME_MAPPINGS[viseme].head).forEach(key => {
+//     VISEME_MAPPINGS[viseme].head[key] *= GLOBAL_INTENSITY;
+//   });
+// });
 
 // ============================================================================
 // LIP SYNC ENGINE (WITH DEBUGGING AND SMOOTHING)
@@ -421,3 +433,4 @@ export function applyExpression(
     });
   }
 }
+

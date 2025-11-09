@@ -20,7 +20,7 @@ export interface AnimationInfo {
 export const ANIMATIONS: Record<string, AnimationInfo> = {
   Talking: {
     name: "Talking",
-    url: "https://files.catbox.moe/0slquj.fbx",
+    url: "https://files.catbox.moe/soybay.fbx",
     description: "Talking while moving the hands",
     emoji: "🧍",
     loop: false,

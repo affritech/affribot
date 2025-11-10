@@ -7,8 +7,9 @@ import { Experience } from "./components/Experience";
 import { LiveAPIProvider } from "./contexts/LiveAPIContext";
 import { Altair } from "./components/altair/Altair";
 import ControlTray from "./components/control-tray/ControlTray";
-import AvatarCustomizer from "./components/AvatarCustomizer";
 import LoadingScreen from "./components/LoadingScreen";
+import SceneSelector from "./lib/SceneSelector";
+import { getAvatar, getScene } from "./lib/SceneManeger";
 import cn from "classnames";
 import { LiveClientOptions } from "./types";
 
@@ -43,14 +44,36 @@ function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string>("https://files.catbox.moe/x4cg70.glb");
+  const [currentAvatarId, setCurrentAvatarId] = useState<string>("aifra");
+  const [currentSceneId, setCurrentSceneId] = useState<string>("office");
   const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [cameraPosition, setCameraPosition] = useState<[number, number, number]>([-3, 1, 8]);
   const [showCameraControls, setShowCameraControls] = useState(true);
 
-  const handleAvatarChange = (newUrl: string) => {
-    console.log("🔄 Changing avatar, resetting loading state");
-    setIsModelLoaded(false);
-    setAvatarUrl(newUrl);
+  const handleAvatarChange = (avatarId: string) => {
+    console.log("🔄 Changing avatar to:", avatarId);
+    const avatar = getAvatar(avatarId);
+    if (avatar) {
+      setIsModelLoaded(false);
+      setAvatarUrl(avatar.url);
+      setCurrentAvatarId(avatarId);
+    }
+  };
+
+  const handleSceneChange = (sceneId: string) => {
+    console.log("🏠 Changing scene to:", sceneId);
+    const scene = getScene(sceneId);
+    if (scene) {
+      setCurrentSceneId(sceneId);
+      // Update camera to scene's default
+      setCameraPosition(scene.cameraDefault.position);
+      window.dispatchEvent(new CustomEvent('cameraChange', { 
+        detail: { 
+          position: scene.cameraDefault.position,
+          target: scene.cameraDefault.target 
+        } 
+      }));
+    }
   };
 
   const handleCameraPreset = (preset: keyof typeof cameraPresets) => {
@@ -71,6 +94,14 @@ function App() {
       <LiveAPIProvider options={apiOptions}>
         <div className="streaming-console">
           {!isModelLoaded && <LoadingScreen isModelLoaded={isModelLoaded} />}
+          
+          {/* Scene & Avatar Menu */}
+          <SceneSelector
+            currentScene={currentSceneId}
+            currentAvatar={currentAvatarId}
+            onSceneChange={handleSceneChange}
+            onAvatarChange={handleAvatarChange}
+          />
           
           {/* Camera Controls Panel */}
           {isModelLoaded && (

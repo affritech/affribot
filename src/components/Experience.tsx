@@ -63,8 +63,8 @@ export const Experience = ({ avatarUrl, onModelLoaded }: ExperienceProps) => {
         enableZoom={true}
         enablePan={true}
         enableRotate={true}
-        minDistance={10}
-        maxDistance={10}
+        minDistance={5}
+        maxDistance={20}
         maxPolarAngle={Math.PI / 2}
       />
       <Sky />

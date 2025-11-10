@@ -88,7 +88,7 @@ export const Experience = ({ avatarUrl, onModelLoaded }: ExperienceProps) => {
           animation="Idle" 
           avatarUrl={avatarUrl}
           rotation={[-Math.PI / 2, 0, 0]} 
-          position={[-1.5, 0, 1.3]}
+          position={[-1.5, 0, 1.5]}
           onModelLoaded={onModelLoaded}
         />
         

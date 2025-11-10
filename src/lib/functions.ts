@@ -1,35 +1,36 @@
 /**
  * FILE: src/lib/functions.ts
  * 
- * All custom function declarations and handlers in one place
+ * All custom function declarations and handlers - WITH FACIAL EXPRESSIONS
  */
 
 import { FunctionDeclaration, Type } from "@google/genai";
 import { getAnimationNames, getAnimationDescriptions } from "./animations";
+import { getExpressionNames, getExpressionDescriptions } from "./FacialExpressions";
 
 // ============================================
-// ANIMATION CONTROL (AI-Driven)
+// ANIMATION CONTROL (Body Animations)
 // ============================================
 
 export const playAnimationDeclaration: FunctionDeclaration = {
   name: "play_animation",
-  description: `Play an animation on Aifra's avatar to express emotions and actions physically. 
+  description: `Play a BODY ANIMATION on Aifra's avatar (walking, gestures, dancing, etc.).
 
-Available animations:
+Available body animations:
 ${getAnimationDescriptions()}
 
-Use animations to enhance your presence naturally. Match animations to emotional tone and context.`,
+Use animations to enhance physical presence. Match animations to context and emotions.`,
   parameters: {
     type: Type.OBJECT,
     properties: {
       animation: {
         type: Type.STRING,
-        description: "Animation to play",
+        description: "Body animation to play",
         enum: getAnimationNames(),
       },
       duration: {
         type: Type.NUMBER,
-        description: "Seconds to play (optional). If not specified, animation plays until next animation or loops naturally.",
+        description: "Seconds to play (optional). If not specified, animation plays naturally.",
       },
     },
     required: ["animation"],
@@ -37,7 +38,36 @@ Use animations to enhance your presence naturally. Match animations to emotional
 };
 
 // ============================================
-// OTHER FUNCTIONS
+// FACIAL EXPRESSION CONTROL (Morph Targets)
+// ============================================
+
+export const setExpressionDeclaration: FunctionDeclaration = {
+  name: "set_expression",
+  description: `Set a FACIAL EXPRESSION on Aifra's face using morph targets (emotions like happy, sad, angry, surprised, etc.).
+
+Available facial expressions:
+${getExpressionDescriptions()}
+
+Use expressions to show emotions, reactions, and emotional states. Expressions affect only the face, not body movement.`,
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      expression: {
+        type: Type.STRING,
+        description: "Facial expression to display",
+        enum: getExpressionNames(),
+      },
+      duration: {
+        type: Type.NUMBER,
+        description: "How long to hold the expression in seconds (optional, defaults to natural duration)",
+      },
+    },
+    required: ["expression"],
+  },
+};
+
+// ============================================
+// OTHER FUNCTIONS (from before)
 // ============================================
 
 export const weatherDeclaration: FunctionDeclaration = {
@@ -94,74 +124,6 @@ export const notificationDeclaration: FunctionDeclaration = {
   },
 };
 
-export const saveNoteDeclaration: FunctionDeclaration = {
-  name: "save_note",
-  description: "Save a note or memo for later.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      title: {
-        type: Type.STRING,
-        description: "Note title",
-      },
-      content: {
-        type: Type.STRING,
-        description: "Note content",
-      },
-    },
-    required: ["title", "content"],
-  },
-};
-
-export const timerDeclaration: FunctionDeclaration = {
-  name: "set_timer",
-  description: "Set a countdown timer.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      minutes: {
-        type: Type.NUMBER,
-        description: "Number of minutes",
-      },
-      message: {
-        type: Type.STRING,
-        description: "Message when timer completes",
-      },
-    },
-    required: ["minutes", "message"],
-  },
-};
-
-export const decisionDeclaration: FunctionDeclaration = {
-  name: "make_decision",
-  description: "Make a random decision from options.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      options: {
-        type: Type.STRING,
-        description: "Comma-separated options",
-      },
-    },
-    required: ["options"],
-  },
-};
-
-export const openUrlDeclaration: FunctionDeclaration = {
-  name: "open_url",
-  description: "Open a URL in a new browser tab.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      url: {
-        type: Type.STRING,
-        description: "URL to open",
-      },
-    },
-    required: ["url"],
-  },
-};
-
 // ============================================
 // FUNCTION HANDLERS
 // ============================================
@@ -171,7 +133,6 @@ export const handlePlayAnimation = (args: any) => {
   
   console.log("🎬 handlePlayAnimation called with:", { animation, duration });
   
-  // Dispatch event that Avatar component listens for
   window.dispatchEvent(new CustomEvent('avatarAnimation', { 
     detail: { animation, duration } 
   }));
@@ -183,6 +144,25 @@ export const handlePlayAnimation = (args: any) => {
     animation,
     duration: duration || 'continuous',
     message: `Playing ${animation} animation${duration ? ` for ${duration} seconds` : ''}`,
+  };
+};
+
+export const handleSetExpression = (args: any) => {
+  const { expression, duration } = args;
+  
+  console.log("😊 handleSetExpression called with:", { expression, duration });
+  
+  window.dispatchEvent(new CustomEvent('avatarExpression', { 
+    detail: { expression, duration } 
+  }));
+  
+  console.log("✅ Expression event dispatched:", expression);
+  
+  return {
+    success: true,
+    expression,
+    duration: duration || 'default',
+    message: `Setting facial expression to ${expression}${duration ? ` for ${duration} seconds` : ''}`,
   };
 };
 
@@ -244,78 +224,6 @@ export const handleSendNotification = (args: any) => {
   };
 };
 
-export const handleSaveNote = (args: any) => {
-  const { title, content } = args;
-  const timestamp = new Date().toISOString();
-  
-  const notesKey = 'aifra_notes';
-  const existingNotes = JSON.parse(sessionStorage.getItem(notesKey) || '[]');
-  
-  const newNote = {
-    id: Date.now(),
-    title,
-    content,
-    timestamp,
-  };
-  
-  existingNotes.push(newNote);
-  sessionStorage.setItem(notesKey, JSON.stringify(existingNotes));
-  
-  return {
-    success: true,
-    message: `Note "${title}" saved`,
-    noteId: newNote.id,
-  };
-};
-
-export const handleSetTimer = (args: any) => {
-  const { minutes, message } = args;
-  const milliseconds = minutes * 60 * 1000;
-  
-  setTimeout(() => {
-    if ("Notification" in window && Notification.permission === "granted") {
-      new Notification("⏰ Timer Complete!", { body: message });
-    }
-    alert(`⏰ Timer: ${message}`);
-  }, milliseconds);
-  
-  return {
-    success: true,
-    message: `Timer set for ${minutes} minutes`,
-    completionTime: new Date(Date.now() + milliseconds).toLocaleTimeString(),
-  };
-};
-
-export const handleMakeDecision = (args: any) => {
-  const { options } = args;
-  const optionsArray = options.split(',').map((o: string) => o.trim());
-  const chosen = optionsArray[Math.floor(Math.random() * optionsArray.length)];
-  
-  return {
-    success: true,
-    options: optionsArray,
-    decision: chosen,
-  };
-};
-
-export const handleOpenUrl = (args: any) => {
-  const { url } = args;
-  
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    return {
-      success: false,
-      error: "URL must start with http:// or https://",
-    };
-  }
-  
-  window.open(url, '_blank');
-  
-  return {
-    success: true,
-    url,
-  };
-};
-
 // ============================================
 // FUNCTION ROUTER
 // ============================================
@@ -327,6 +235,9 @@ export const handleFunctionCall = async (functionName: any, args: any) => {
     case "play_animation":
       return handlePlayAnimation(args);
     
+    case "set_expression":
+      return handleSetExpression(args);
+    
     case "get_weather":
       return await handleGetWeather(args);
     
@@ -335,18 +246,6 @@ export const handleFunctionCall = async (functionName: any, args: any) => {
     
     case "send_notification":
       return handleSendNotification(args);
-    
-    case "save_note":
-      return handleSaveNote(args);
-    
-    case "set_timer":
-      return handleSetTimer(args);
-    
-    case "make_decision":
-      return handleMakeDecision(args);
-    
-    case "open_url":
-      return handleOpenUrl(args);
     
     default:
       console.warn("❌ Unknown function:", functionName);
@@ -359,12 +258,9 @@ export const handleFunctionCall = async (functionName: any, args: any) => {
 // ============================================
 
 export const allFunctionDeclarations = [
-  playAnimationDeclaration,  // AI controls animations!
+  playAnimationDeclaration,      // Body animations
+  setExpressionDeclaration,      // Facial expressions
   weatherDeclaration,
   calculateDeclaration,
   notificationDeclaration,
-  saveNoteDeclaration,
-  timerDeclaration,
-  decisionDeclaration,
-  openUrlDeclaration,
 ];

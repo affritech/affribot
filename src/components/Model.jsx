@@ -10,11 +10,17 @@ import {
   lerpExpression
 } from "../lib/LipSyncSystem";
 
+import { 
+  getExpression, 
+  applyExpression as applyFacialExpression,
+  resetExpression
+} from "../lib/FacialExpressions";
+
 import { useLiveAPIContext } from "../contexts/LiveAPIContext";
 import { getAnimationUrl, getAnimationInfo, isValidAnimation } from "../lib/animations";
 
 export function Avatar(props) {
-  const { avatarUrl, onModelLoaded, ...restProps } = props;
+  const { avatarUrl, onModelLoaded, accent, ...restProps } = props;
   const group = useRef();
   
   const modelUrl = avatarUrl || "https://files.catbox.moe/xbub9j.glb";
@@ -25,6 +31,11 @@ export function Avatar(props) {
   const [currentViseme, setCurrentViseme] = useState('neutral');
   const previousExpression = useRef({ head: {}, teeth: {}, eyes: {} });
   const [lipSyncEnabled, setLipSyncEnabled] = useState(true);
+  
+  // Facial expression state
+  const [currentFacialExpression, setCurrentFacialExpression] = useState(null);
+  const [expressionProgress, setExpressionProgress] = useState(0);
+  const expressionTimeoutRef = useRef(null);
   
   // Track which animation URL to load
   const [currentAnimationUrl, setCurrentAnimationUrl] = useState("https://files.catbox.moe/0y2445.fbx");
@@ -56,12 +67,8 @@ export function Avatar(props) {
     }
 
     console.log("📋 Available morph targets:", Object.keys(morphDict));
-    console.log("📋 Total morph count:", Object.keys(morphDict).length);
 
-    // Identify which morph indices are used for lip sync
     const lipSyncKeys = Object.keys(VISEME_MAPPINGS.neutral.head || {});
-    console.log("🔍 Looking for these lip sync keys:", lipSyncKeys);
-    
     const foundKeys = [];
     const missingKeys = [];
     
@@ -88,20 +95,16 @@ export function Avatar(props) {
         const newClip = clip.clone();
         newClip.name = currentAnimationName;
         
-        // CRITICAL: Remove mouth morph target tracks from animation
-        // so they don't conflict with lip sync
+        // Remove mouth morph target tracks from animation
         newClip.tracks = newClip.tracks.filter(track => {
-          // Check if this track controls a morph target
           if (track.name.includes('morphTargetInfluences')) {
-            // Extract the morph index from the track name
             const match = track.name.match(/\[(\d+)\]/);
             if (match) {
               const morphIndex = parseInt(match[1]);
-              // Keep the track only if it's NOT a lip sync morph
               return !lipSyncMorphIndices.current.has(morphIndex);
             }
           }
-          return true; // Keep all non-morph tracks
+          return true;
         });
         
         return newClip;
@@ -138,9 +141,7 @@ export function Avatar(props) {
 
   // Play animation
   useEffect(() => {
-    if (!actions || !actions[currentAnimationName]) {
-      return;
-    }
+    if (!actions || !actions[currentAnimationName]) return;
 
     console.log(`✅ Playing: ${currentAnimationName}`);
     
@@ -198,17 +199,6 @@ export function Avatar(props) {
             setCurrentAnimationName("Idle");
           });
         }, duration * 1000);
-      } else if (!animInfo?.loop && currentAnimations?.[0]) {
-        const clip = currentAnimations[0];
-        const returnTime = Math.max(clip.duration * 1000, 3000);
-        animationTimeoutRef.current = setTimeout(() => {
-          console.log(`⏰ Animation complete, returning to Idle`);
-          setNextAnimationUrl("https://files.catbox.moe/0y2445.fbx");
-          requestAnimationFrame(() => {
-            setCurrentAnimationUrl("https://files.catbox.moe/0y2445.fbx");
-            setCurrentAnimationName("Idle");
-          });
-        }, returnTime);
       }
     };
 
@@ -220,6 +210,52 @@ export function Avatar(props) {
       }
     };
   }, [currentAnimations]);
+
+  // Listen for facial expression changes from AI
+  useEffect(() => {
+    const handleExpressionChange = (event) => {
+      const { expression: exprName, duration } = event.detail;
+      
+      const expression = getExpression(exprName);
+      if (!expression) {
+        console.warn(`Unknown expression: ${exprName}`);
+        return;
+      }
+
+      if (expressionTimeoutRef.current) {
+        clearTimeout(expressionTimeoutRef.current);
+        expressionTimeoutRef.current = null;
+      }
+
+      console.log(`😊 Setting expression: ${expression.name} ${expression.emoji}`);
+      
+      setCurrentFacialExpression(expression);
+      setExpressionProgress(0);
+
+      // Apply the expression immediately to the head mesh
+      if (headRef.current) {
+        applyFacialExpression(headRef.current, expression);
+      }
+
+      // Set timeout to return to neutral
+      const holdDuration = duration || expression.duration || 3;
+      expressionTimeoutRef.current = setTimeout(() => {
+        console.log(`⏰ Returning to neutral expression`);
+        setCurrentFacialExpression(null);
+        if (headRef.current) {
+          resetExpression(headRef.current);
+        }
+      }, holdDuration * 1000);
+    };
+
+    window.addEventListener('avatarExpression', handleExpressionChange);
+    return () => {
+      window.removeEventListener('avatarExpression', handleExpressionChange);
+      if (expressionTimeoutRef.current) {
+        clearTimeout(expressionTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Integrate with audio streamer for lip sync
   useEffect(() => {
@@ -238,7 +274,7 @@ export function Avatar(props) {
     }
   }, [audioStreamer, lipSyncEnabled]);
 
-  // Animation loop - SIMPLIFIED
+  // Animation loop - Handle lip sync (but NOT facial expressions anymore)
   useFrame((state, delta) => {
     if (!lipSyncEnabled || !headRef.current || !headRef.current.morphTargetInfluences) return;
 
@@ -246,22 +282,13 @@ export function Avatar(props) {
     
     if (newViseme !== currentViseme) {
       setCurrentViseme(newViseme);
-      console.log("🗣️ Current viseme:", newViseme);
     }
 
-    // Get the Expression object (has head, teeth, eyes properties)
+    // Get lip sync morph targets
     const targetExpression = lipSyncEngine.current.getCurrentMorphTargets();
-    
-    // Extract just the head morphs
     const targetHeadMorphs = targetExpression.head || {};
     
-    // Debug: Log when we have non-zero targets
-    const hasActiveTargets = Object.values(targetHeadMorphs).some(v => v > 0.01);
-    if (hasActiveTargets && Math.random() < 0.1) { // Log 10% of frames to avoid spam
-      console.log("📊 Target head morphs:", targetHeadMorphs);
-    }
-    
-    // Smooth the transition between visemes (using just head morphs)
+    // Smooth transition for lip sync
     const prevHeadMorphs = previousExpression.current.head || {};
     const smoothedHeadMorphs = {};
     
@@ -272,27 +299,15 @@ export function Avatar(props) {
       smoothedHeadMorphs[key] = fromVal + (toVal - fromVal) * Math.min(delta * 20, 1);
     });
 
-    // Apply lip sync morphs directly (animation no longer controls these)
+    // Apply ONLY lip sync morphs (not touching facial expression morphs)
     const morphDict = headRef.current.morphTargetDictionary;
     if (morphDict) {
-      let appliedCount = 0;
-      let debugInfo = [];
-      
       Object.keys(smoothedHeadMorphs).forEach((key) => {
         const morphIndex = morphDict[key];
         if (morphIndex !== undefined) {
-          const value = smoothedHeadMorphs[key];
-          if (value > 0.01) {
-            appliedCount++;
-            debugInfo.push(`${key}=${value.toFixed(2)}`);
-          }
-          headRef.current.morphTargetInfluences[morphIndex] = value;
+          headRef.current.morphTargetInfluences[morphIndex] = smoothedHeadMorphs[key];
         }
       });
-      
-      if (appliedCount > 0 && Math.random() < 0.1) {
-        console.log(`✅ Applied ${appliedCount} morphs:`, debugInfo.join(', '));
-      }
     }
 
     previousExpression.current = targetExpression;

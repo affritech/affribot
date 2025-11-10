@@ -32,19 +32,39 @@ export const Experience = ({ avatarUrl, onModelLoaded }: ExperienceProps) => {
       }
     };
 
+    const handleCameraChange = (event: any) => {
+      if (event.detail.position && controlsRef.current) {
+        const [x, y, z] = event.detail.position;
+        camera.position.set(x, y, z);
+        
+        if (event.detail.target) {
+          const [tx, ty, tz] = event.detail.target;
+          controlsRef.current.target.set(tx, ty, tz);
+        }
+        
+        controlsRef.current.update();
+      }
+    };
+
     window.addEventListener('avatarZoom', handleZoom);
-    return () => window.removeEventListener('avatarZoom', handleZoom);
+    window.addEventListener('cameraChange', handleCameraChange);
+    
+    return () => {
+      window.removeEventListener('avatarZoom', handleZoom);
+      window.removeEventListener('cameraChange', handleCameraChange);
+    };
   }, [camera]);
 
   return (
     <>
       <OrbitControls 
         ref={controlsRef}
+        target={[-3, 1, 0]}
         enableZoom={true}
         enablePan={true}
         enableRotate={true}
-        minDistance={2}
-        maxDistance={20}
+        minDistance={10}
+        maxDistance={10}
         maxPolarAngle={Math.PI / 2}
       />
       <Sky />

@@ -1,4 +1,3 @@
-
 import { audioContext } from "./utils";
 import AudioRecordingWorklet from "./worklets/audio-processing";
 import VolMeterWorket from "./worklets/vol-meter";
@@ -37,9 +36,9 @@ export class AudioRecorder extends EventEmitter {
 
     this.starting = new Promise(async (resolve, reject) => {
       try {
-        // Enhanced audio constraints - using only standard properties
+        // CRITICAL: Enhanced audio constraints for echo cancellation
         const audioConstraints: MediaTrackConstraints = {
-          echoCancellation: true,
+          echoCancellation: true,        // MUST BE TRUE
           noiseSuppression: true,
           autoGainControl: true,
           sampleRate: this.sampleRate,
@@ -49,11 +48,14 @@ export class AudioRecorder extends EventEmitter {
         // Add experimental constraints for browsers that support them
         const experimentalConstraints: any = {
           ...audioConstraints,
+          // Google-specific echo cancellation (Chrome)
           googEchoCancellation: true,
           googAutoGainControl: true,
           googNoiseSuppression: true,
           googHighpassFilter: true,
           googTypingNoiseDetection: true,
+          // Advanced echo cancellation
+          echoCancellationType: 'system', // Use system-level AEC
         };
 
         // Try experimental constraints first, fall back to standard
@@ -62,6 +64,7 @@ export class AudioRecorder extends EventEmitter {
           this.stream = await navigator.mediaDevices.getUserMedia({
             audio: experimentalConstraints,
           });
+          console.log("✅ Using experimental audio constraints");
         } catch (e) {
           console.log("⚠️ Experimental constraints not supported, using standard");
           this.stream = await navigator.mediaDevices.getUserMedia({
@@ -69,7 +72,7 @@ export class AudioRecorder extends EventEmitter {
           });
         }
 
-        // Log the actual constraints applied (for debugging)
+        // CRITICAL: Verify echo cancellation is active
         const audioTrack = this.stream.getAudioTracks()[0];
         const settings = audioTrack.getSettings();
         console.log("✅ Audio Track Settings:", {
@@ -77,11 +80,22 @@ export class AudioRecorder extends EventEmitter {
           noiseSuppression: settings.noiseSuppression,
           autoGainControl: settings.autoGainControl,
           sampleRate: settings.sampleRate,
+          channelCount: settings.channelCount,
         });
 
-        // Verify echo cancellation is active
+        // CRITICAL WARNING: If echo cancellation is NOT active
         if (!settings.echoCancellation) {
-          console.warn("⚠️ Echo cancellation not active! Audio feedback may occur.");
+          console.error("❌ CRITICAL: Echo cancellation NOT active!");
+          console.error("❌ Audio feedback WILL occur on speaker mode!");
+          console.error("❌ Solution: Use headphones or external echo cancellation");
+          
+          // Optional: Show UI warning to user
+          this.emit('warning', {
+            type: 'echo-cancellation-disabled',
+            message: 'Echo cancellation is not working. Please use headphones to avoid feedback.'
+          });
+        } else {
+          console.log("✅ Echo cancellation is ACTIVE");
         }
 
         this.audioContext = await audioContext({ sampleRate: this.sampleRate });

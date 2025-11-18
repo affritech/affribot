@@ -14,7 +14,18 @@ export class AudioStreamer {
   private isStreamComplete: boolean = false;
   private checkInterval: number | null = null;
   private scheduledTime: number = 0;
-  private initialBufferTime: number = 0.15;
+  
+  // CRITICAL: Adaptive buffering for poor connections
+  private initialBufferTime: number = 0.3; // Increased from 0.15 to 0.3s for Africa
+  private minBufferTime: number = 0.2; // Minimum buffer
+  private maxBufferTime: number = 0.6; // Maximum buffer for very poor connections
+  private adaptiveBufferEnabled: boolean = true;
+  
+  // Network monitoring
+  private lastPlaybackTime: number = 0;
+  private underrunCount: number = 0;
+  private consecutiveGoodPlayback: number = 0;
+  
   public gainNode: GainNode;
   public source: AudioBufferSourceNode;
   private endOfQueueAudioSource: AudioBufferSourceNode | null = null;
@@ -43,6 +54,9 @@ export class AudioStreamer {
     this.source = this.context.createBufferSource();
     this.gainNode.connect(this.context.destination);
     this.addPCM16 = this.addPCM16.bind(this);
+    
+    // Monitor network quality
+    this.monitorNetworkQuality();
   }
 
   enableLipSync(engine: LipSyncEngine): void {
@@ -106,6 +120,46 @@ export class AudioStreamer {
       hash = hash & hash;
     }
     return hash.toString(36);
+  }
+
+  /**
+   * CRITICAL: Monitor network quality and adapt buffer size
+   */
+  private monitorNetworkQuality(): void {
+    setInterval(() => {
+      if (!this.adaptiveBufferEnabled) return;
+      
+      const now = this.context.currentTime;
+      const timeSinceLastPlay = now - this.lastPlaybackTime;
+      
+      // Detect underruns (buffer starvation)
+      if (this.isPlaying && timeSinceLastPlay > 0.5) {
+        this.underrunCount++;
+        this.consecutiveGoodPlayback = 0;
+        
+        // Increase buffer if experiencing issues
+        if (this.underrunCount > 2) {
+          this.initialBufferTime = Math.min(
+            this.initialBufferTime + 0.1,
+            this.maxBufferTime
+          );
+          console.log(`📡 Poor connection detected. Buffer increased to ${this.initialBufferTime.toFixed(2)}s`);
+          this.underrunCount = 0;
+        }
+      } else if (this.isPlaying) {
+        this.consecutiveGoodPlayback++;
+        
+        // Decrease buffer if connection is stable
+        if (this.consecutiveGoodPlayback > 10) {
+          this.initialBufferTime = Math.max(
+            this.initialBufferTime - 0.05,
+            this.minBufferTime
+          );
+          console.log(`📡 Good connection. Buffer decreased to ${this.initialBufferTime.toFixed(2)}s`);
+          this.consecutiveGoodPlayback = 0;
+        }
+      }
+    }, 1000);
   }
 
   startNewResponse(): void {
@@ -230,7 +284,8 @@ export class AudioStreamer {
   }
 
   private scheduleNextBuffer() {
-    const SCHEDULE_AHEAD_TIME = 0.25;
+    // IMPROVED: Dynamic schedule-ahead based on buffer size
+    const SCHEDULE_AHEAD_TIME = this.initialBufferTime + 0.1;
 
     while (
       this.audioQueue.length > 0 &&
@@ -287,6 +342,9 @@ export class AudioStreamer {
 
       const startTime = Math.max(this.scheduledTime, this.context.currentTime);
       source.start(startTime);
+      
+      // Track playback time
+      this.lastPlaybackTime = startTime;
 
       if (!this.hasStarted) {
         this.audioStartTime = startTime;

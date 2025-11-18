@@ -49,6 +49,10 @@ function App() {
   const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [cameraPosition, setCameraPosition] = useState<[number, number, number]>([-3, 1, 8]);
   const [showCameraControls, setShowCameraControls] = useState(true);
+  
+  // NEW: Network quality indicator
+  const [networkQuality, setNetworkQuality] = useState<'good' | 'fair' | 'poor'>('good');
+  const [echoWarning, setEchoWarning] = useState(false);
 
   const handleAvatarChange = (avatarId: string) => {
     console.log("🔄 Changing avatar to:", avatarId);
@@ -65,7 +69,6 @@ function App() {
     const scene = getScene(sceneId);
     if (scene) {
       setCurrentSceneId(sceneId);
-      // Update camera to scene's default
       setCameraPosition(scene.cameraDefault.position);
       window.dispatchEvent(new CustomEvent('cameraChange', { 
         detail: { 
@@ -85,6 +88,51 @@ function App() {
     }));
   };
 
+  // NEW: Monitor network connection quality
+  useEffect(() => {
+    if ('connection' in navigator) {
+      const connection = (navigator as any).connection;
+      
+      const updateNetworkQuality = () => {
+        const effectiveType = connection?.effectiveType;
+        
+        if (effectiveType === '4g') {
+          setNetworkQuality('good');
+        } else if (effectiveType === '3g') {
+          setNetworkQuality('fair');
+        } else {
+          setNetworkQuality('poor');
+        }
+        
+        console.log(`📡 Network: ${effectiveType || 'unknown'}`);
+      };
+      
+      updateNetworkQuality();
+      connection?.addEventListener('change', updateNetworkQuality);
+      
+      return () => {
+        connection?.removeEventListener('change', updateNetworkQuality);
+      };
+    }
+  }, []);
+
+  // NEW: Listen for echo cancellation warnings
+  useEffect(() => {
+    const handleEchoWarning = (event: any) => {
+      if (event.detail?.type === 'echo-cancellation-disabled') {
+        setEchoWarning(true);
+        
+        // Auto-hide warning after 10 seconds
+        setTimeout(() => setEchoWarning(false), 10000);
+      }
+    };
+    
+    window.addEventListener('audio-warning', handleEchoWarning as EventListener);
+    return () => {
+      window.removeEventListener('audio-warning', handleEchoWarning as EventListener);
+    };
+  }, []);
+
   useEffect(() => {
     console.log("📊 isModelLoaded changed to: ", isModelLoaded);
   }, [isModelLoaded]);
@@ -94,6 +142,68 @@ function App() {
       <LiveAPIProvider options={apiOptions}>
         <div className="streaming-console">
           {!isModelLoaded && <LoadingScreen isModelLoaded={isModelLoaded} />}
+          
+          {/* NEW: Network Quality Indicator */}
+          {isModelLoaded && (
+            <div style={{
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              zIndex: 999,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px'
+            }}>
+              <div style={{
+                background: networkQuality === 'good' ? 'rgba(34, 197, 94, 0.2)' :
+                           networkQuality === 'fair' ? 'rgba(234, 179, 8, 0.2)' :
+                           'rgba(239, 68, 68, 0.2)',
+                border: `1px solid ${networkQuality === 'good' ? '#22c55e' :
+                         networkQuality === 'fair' ? '#eab308' :
+                         '#ef4444'}`,
+                padding: '8px 12px',
+                borderRadius: '8px',
+                color: 'white',
+                fontSize: '12px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <span style={{ fontSize: '16px' }}>
+                  {networkQuality === 'good' ? '🟢' :
+                   networkQuality === 'fair' ? '🟡' : '🔴'}
+                </span>
+                Network: {networkQuality.toUpperCase()}
+              </div>
+            </div>
+          )}
+          
+          {/* NEW: Echo Cancellation Warning */}
+          {echoWarning && (
+            <div style={{
+              position: 'absolute',
+              top: '60px',
+              right: '10px',
+              zIndex: 999,
+              background: 'rgba(239, 68, 68, 0.95)',
+              border: '2px solid #ef4444',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '13px',
+              maxWidth: '300px',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+            }}>
+              <div style={{ fontWeight: 'bold', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '18px' }}>⚠️</span>
+                Echo Warning
+              </div>
+              <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
+                Echo cancellation is not working. Please use headphones to prevent audio feedback.
+              </div>
+            </div>
+          )}
           
           {/* Scene & Avatar Menu */}
           <SceneSelector
@@ -108,7 +218,7 @@ function App() {
             <div style={{
               position: 'absolute',
               top: '10px',
-              right: '10px',
+              left: '10px',
               zIndex: 1000,
               backgroundColor: 'rgba(255, 255, 255, 0.95)',
               padding: '15px',

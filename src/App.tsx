@@ -218,7 +218,7 @@ function App() {
             <div style={{
               position: 'absolute',
               top: '10px',
-              left: '10px',
+              right: '10px',
               zIndex: 1000,
               backgroundColor: 'rgba(255, 255, 255, 0.95)',
               padding: '15px',

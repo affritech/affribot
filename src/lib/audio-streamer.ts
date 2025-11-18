@@ -16,9 +16,9 @@ export class AudioStreamer {
   private scheduledTime: number = 0;
   
   // CRITICAL: Adaptive buffering for poor connections
-  private initialBufferTime: number = 0.3; // Increased from 0.15 to 0.3s for Africa
-  private minBufferTime: number = 0.2; // Minimum buffer
-  private maxBufferTime: number = 0.6; // Maximum buffer for very poor connections
+  private initialBufferTime: number = 0.3;
+  private minBufferTime: number = 0.2;
+  private maxBufferTime: number = 0.6;
   private adaptiveBufferEnabled: boolean = true;
   
   // Network monitoring
@@ -122,9 +122,6 @@ export class AudioStreamer {
     return hash.toString(36);
   }
 
-  /**
-   * CRITICAL: Monitor network quality and adapt buffer size
-   */
   private monitorNetworkQuality(): void {
     setInterval(() => {
       if (!this.adaptiveBufferEnabled) return;
@@ -132,12 +129,10 @@ export class AudioStreamer {
       const now = this.context.currentTime;
       const timeSinceLastPlay = now - this.lastPlaybackTime;
       
-      // Detect underruns (buffer starvation)
       if (this.isPlaying && timeSinceLastPlay > 0.5) {
         this.underrunCount++;
         this.consecutiveGoodPlayback = 0;
         
-        // Increase buffer if experiencing issues
         if (this.underrunCount > 2) {
           this.initialBufferTime = Math.min(
             this.initialBufferTime + 0.1,
@@ -149,7 +144,6 @@ export class AudioStreamer {
       } else if (this.isPlaying) {
         this.consecutiveGoodPlayback++;
         
-        // Decrease buffer if connection is stable
         if (this.consecutiveGoodPlayback > 10) {
           this.initialBufferTime = Math.max(
             this.initialBufferTime - 0.05,
@@ -284,7 +278,6 @@ export class AudioStreamer {
   }
 
   private scheduleNextBuffer() {
-    // IMPROVED: Dynamic schedule-ahead based on buffer size
     const SCHEDULE_AHEAD_TIME = this.initialBufferTime + 0.1;
 
     while (
@@ -343,7 +336,6 @@ export class AudioStreamer {
       const startTime = Math.max(this.scheduledTime, this.context.currentTime);
       source.start(startTime);
       
-      // Track playback time
       this.lastPlaybackTime = startTime;
 
       if (!this.hasStarted) {
@@ -357,17 +349,33 @@ export class AudioStreamer {
       }
 
       this.scheduledTime = startTime + audioBuffer.duration;
-      source.onended = () => this.scheduleNextBuffer();
     }
 
-    if (this.audioQueue.length === 0) {
+    // CRITICAL FIX: Clear the interval when we have data and are scheduling
+    // Only use interval as a fallback when queue is truly empty
+    if (this.audioQueue.length > 0) {
+      // We have data - clear interval and use setTimeout
+      if (this.checkInterval) {
+        clearInterval(this.checkInterval);
+        this.checkInterval = null;
+      }
+      
+      const nextCheckTime = (this.scheduledTime - this.context.currentTime) * 1000;
+      setTimeout(
+        () => this.scheduleNextBuffer(),
+        Math.max(0, nextCheckTime - 50)
+      );
+    } else {
+      // Queue is empty
       if (this.isStreamComplete) {
+        // Stream done, clean up
         this.isPlaying = false;
         if (this.checkInterval) {
           clearInterval(this.checkInterval);
           this.checkInterval = null;
         }
       } else {
+        // Streaming - use interval to check for new data
         if (!this.checkInterval) {
           this.checkInterval = window.setInterval(() => {
             if (this.audioQueue.length > 0) {
@@ -376,13 +384,6 @@ export class AudioStreamer {
           }, 100) as unknown as number;
         }
       }
-    } else {
-      const nextCheckTime =
-        (this.scheduledTime - this.context.currentTime) * 1000;
-      setTimeout(
-        () => this.scheduleNextBuffer(),
-        Math.max(0, nextCheckTime - 50)
-      );
     }
   }
 

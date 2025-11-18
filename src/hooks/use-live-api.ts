@@ -28,7 +28,6 @@ export function useLiveAPI(options: LiveClientOptions): UseLiveAPIResults {
   const [connected, setConnected] = useState(false);
   const [volume, setVolume] = useState(0);
 
-  // register audio for streaming server -> speakers
   useEffect(() => {
     if (!audioStreamerRef.current) {
       audioContext({ id: "audio-out" }).then((audioCtx: AudioContext) => {
@@ -51,23 +50,34 @@ export function useLiveAPI(options: LiveClientOptions): UseLiveAPIResults {
 
     const onClose = () => {
       setConnected(false);
+      audioStreamerRef.current?.stop();
     };
 
     const onError = (error: ErrorEvent) => {
       console.error("error", error);
     };
 
-    const stopAudioStreamer = () => audioStreamerRef.current?.stop();
+    const stopAudioStreamer = () => {
+      console.log("🛑 Interruption detected - stopping audio");
+      audioStreamerRef.current?.stop();
+      audioStreamerRef.current?.startNewResponse();
+    };
 
     const onAudio = (data: ArrayBuffer) =>
       audioStreamerRef.current?.addPCM16(new Uint8Array(data));
+
+    const onTurnComplete = () => {
+      console.log("✅ Turn complete - ready for next response");
+      audioStreamerRef.current?.startNewResponse();
+    };
 
     client
       .on("error", onError)
       .on("open", onOpen)
       .on("close", onClose)
       .on("interrupted", stopAudioStreamer)
-      .on("audio", onAudio);
+      .on("audio", onAudio)
+      .on("turncomplete", onTurnComplete);
 
     return () => {
       client
@@ -76,6 +86,7 @@ export function useLiveAPI(options: LiveClientOptions): UseLiveAPIResults {
         .off("close", onClose)
         .off("interrupted", stopAudioStreamer)
         .off("audio", onAudio)
+        .off("turncomplete", onTurnComplete)
         .disconnect();
     };
   }, [client]);

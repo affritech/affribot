@@ -1,19 +1,3 @@
-/**
- * Copyright 2024 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 import { audioContext } from "./utils";
 import AudioRecordingWorklet from "./worklets/audio-processing";
 import VolMeterWorket from "./worklets/vol-meter";
@@ -52,25 +36,52 @@ export class AudioRecorder extends EventEmitter {
 
     this.starting = new Promise(async (resolve, reject) => {
       try {
-        // Request microphone with echo cancellation and noise suppression
-        this.stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true, // Filters out sounds from speakers
-            noiseSuppression: true, // Reduces background noise
-            autoGainControl: true, // Normalizes volume levels
-            sampleRate: this.sampleRate, // Match our target sample rate
-          },
-        });
+        // Enhanced audio constraints - using only standard properties
+        const audioConstraints: MediaTrackConstraints = {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: this.sampleRate,
+          channelCount: 1,
+        };
+
+        // Add experimental constraints for browsers that support them
+        const experimentalConstraints: any = {
+          ...audioConstraints,
+          googEchoCancellation: true,
+          googAutoGainControl: true,
+          googNoiseSuppression: true,
+          googHighpassFilter: true,
+          googTypingNoiseDetection: true,
+        };
+
+        // Try experimental constraints first, fall back to standard
+        let constraints: MediaStreamConstraints;
+        try {
+          this.stream = await navigator.mediaDevices.getUserMedia({
+            audio: experimentalConstraints,
+          });
+        } catch (e) {
+          console.log("⚠️ Experimental constraints not supported, using standard");
+          this.stream = await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraints,
+          });
+        }
 
         // Log the actual constraints applied (for debugging)
         const audioTrack = this.stream.getAudioTracks()[0];
         const settings = audioTrack.getSettings();
-        console.log("Audio Track Settings:", {
+        console.log("✅ Audio Track Settings:", {
           echoCancellation: settings.echoCancellation,
           noiseSuppression: settings.noiseSuppression,
           autoGainControl: settings.autoGainControl,
           sampleRate: settings.sampleRate,
         });
+
+        // Verify echo cancellation is active
+        if (!settings.echoCancellation) {
+          console.warn("⚠️ Echo cancellation not active! Audio feedback may occur.");
+        }
 
         this.audioContext = await audioContext({ sampleRate: this.sampleRate });
         this.source = this.audioContext.createMediaStreamSource(this.stream);
@@ -110,7 +121,7 @@ export class AudioRecorder extends EventEmitter {
         resolve();
         this.starting = null;
       } catch (error) {
-        console.error("Error starting audio recorder:", error);
+        console.error("❌ Error starting audio recorder:", error);
         reject(error);
         this.starting = null;
       }
@@ -135,5 +146,3 @@ export class AudioRecorder extends EventEmitter {
     handleStop();
   }
 }
-
-//nothing is up to date

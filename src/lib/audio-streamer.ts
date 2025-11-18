@@ -25,7 +25,7 @@ export class AudioStreamer {
   private lastPlaybackTime: number = 0;
   private underrunCount: number = 0;
   private consecutiveGoodPlayback: number = 0;
-  private networkMonitorInterval: number | null = null; // FIX: Track interval
+  private networkMonitorInterval: number | null = null;
   
   public gainNode: GainNode;
   public source: AudioBufferSourceNode;
@@ -50,8 +50,10 @@ export class AudioStreamer {
   private processingInProgress: boolean = false;
   private readonly RHUBARB_BATCH_SIZE: number = 1.0;
   
-  // FIX: Track pending completion
   private pendingCompletion: boolean = false;
+  
+  // FIX: Track if worklets are already connected to destination
+  private workletsConnected: boolean = false;
 
   constructor(public context: AudioContext) {
     this.gainNode = this.context.createGain();
@@ -59,7 +61,6 @@ export class AudioStreamer {
     this.gainNode.connect(this.context.destination);
     this.addPCM16 = this.addPCM16.bind(this);
     
-    // Monitor network quality
     this.monitorNetworkQuality();
   }
 
@@ -126,7 +127,6 @@ export class AudioStreamer {
     return hash.toString(36);
   }
 
-  // FIX: Store interval ID and clear it properly
   private monitorNetworkQuality(): void {
     if (this.networkMonitorInterval !== null) {
       clearInterval(this.networkMonitorInterval);
@@ -176,12 +176,13 @@ export class AudioStreamer {
     this.audioBufferDuration = 0;
     this.audioBufferStartTime = 0;
     this.processingInProgress = false;
-    this.pendingCompletion = false; // FIX: Reset completion flag
+    this.pendingCompletion = false;
     
     this.processedChunks.clear();
     
     this.audioQueue = [];
     this.isPlaying = false;
+    this.isStreamComplete = false; // FIX: Reset stream complete flag
     
     if (this.lipSyncEngine) {
       this.lipSyncEngine.reset();
@@ -205,7 +206,6 @@ export class AudioStreamer {
     let processingBuffer = this._processPCM16Chunk(chunk);
 
     if (this.lipSyncEnabled && this.lipSyncEngine && this.useRhubarb) {
-      // FIX: Better timing initialization
       if (this.audioBuffer.length === 0) {
         this.audioBufferStartTime = this.hasStarted 
           ? this.scheduledTime 
@@ -259,8 +259,6 @@ export class AudioStreamer {
 
       console.log(`🎯 Processing ${chunkDuration.toFixed(3)}s chunk starting at ${audioStartTime.toFixed(3)}s`);
 
-      // Clear buffer before processing to avoid growing during async operation
-      const currentBufferDuration = this.audioBufferDuration;
       this.audioBuffer = [];
       this.audioBufferDuration = 0;
 
@@ -276,16 +274,12 @@ export class AudioStreamer {
     } finally {
       this.processingInProgress = false;
       
-      // FIX: Check if we should continue processing or complete
       if (this.audioBufferDuration >= this.RHUBARB_BATCH_SIZE) {
-        // More data accumulated, process it
         this.processAccumulatedAudio();
       } else if (this.pendingCompletion && this.audioBuffer.length > 0) {
-        // FIX: Complete pending, process remaining buffer
         await this.processAccumulatedAudio();
         this.onComplete();
       } else if (this.pendingCompletion) {
-        // No more data to process, call completion
         this.onComplete();
       }
     }
@@ -340,25 +334,32 @@ export class AudioStreamer {
       source.buffer = audioBuffer;
       source.connect(this.gainNode);
 
-      // FIX: Only connect worklets once per source, outside the forEach
+      // FIX: Proper worklet connection - only connect each source to worklet
+      // Worklet nodes should ONLY be connected to destination ONCE, not per source
       const worklets = registeredWorklets.get(this.context);
-      if (worklets) {
+      if (worklets && !this.workletsConnected) {
         Object.entries(worklets).forEach(([workletName, graph]) => {
           const { node, handlers } = graph;
           if (node) {
-            source.connect(node);
-            // FIX: Set up message handler only if not already set
-            if (!node.port.onmessage) {
-              node.port.onmessage = function (ev: MessageEvent) {
-                handlers.forEach((handler) => {
-                  handler.call(node.port, ev);
-                });
-              };
-            }
-            // Only connect to destination once per worklet node, not per source
-            if (!node.context) {
-              node.connect(this.context.destination);
-            }
+            // Connect worklet to destination ONCE
+            node.connect(this.context.destination);
+            
+            // Set up message handler ONCE
+            node.port.onmessage = function (ev: MessageEvent) {
+              handlers.forEach((handler) => {
+                handler.call(node.port, ev);
+              });
+            };
+          }
+        });
+        this.workletsConnected = true;
+      }
+      
+      // Connect THIS audio source to worklets (for analysis/metering)
+      if (worklets) {
+        Object.values(worklets).forEach((graph) => {
+          if (graph.node) {
+            source.connect(graph.node);
           }
         });
       }
@@ -381,10 +382,7 @@ export class AudioStreamer {
       this.scheduledTime = startTime + audioBuffer.duration;
     }
 
-    // CRITICAL FIX: Clear the interval when we have data and are scheduling
-    // Only use interval as a fallback when queue is truly empty
     if (this.audioQueue.length > 0) {
-      // We have data - clear interval and use setTimeout
       if (this.checkInterval) {
         clearInterval(this.checkInterval);
         this.checkInterval = null;
@@ -396,16 +394,13 @@ export class AudioStreamer {
         Math.max(0, nextCheckTime - 50)
       );
     } else {
-      // Queue is empty
       if (this.isStreamComplete) {
-        // Stream done, clean up
         this.isPlaying = false;
         if (this.checkInterval) {
           clearInterval(this.checkInterval);
           this.checkInterval = null;
         }
       } else {
-        // Streaming - use interval to check for new data
         if (!this.checkInterval) {
           this.checkInterval = window.setInterval(() => {
             if (this.audioQueue.length > 0) {
@@ -427,7 +422,7 @@ export class AudioStreamer {
     this.audioStartTime = 0;
     this.totalProcessedDuration = 0;
     this.processedChunks.clear();
-    this.pendingCompletion = false; // FIX: Reset completion flag
+    this.pendingCompletion = false;
 
     this.audioBuffer = [];
     this.audioBufferDuration = 0;
@@ -438,7 +433,6 @@ export class AudioStreamer {
       this.checkInterval = null;
     }
     
-    // FIX: Clear network monitoring interval
     if (this.networkMonitorInterval !== null) {
       clearInterval(this.networkMonitorInterval);
       this.networkMonitorInterval = null;
@@ -469,20 +463,14 @@ export class AudioStreamer {
     this.gainNode.gain.setValueAtTime(1, this.context.currentTime);
   }
 
-  // FIX: Properly handle completion with pending processing
   async complete() {
     this.isStreamComplete = true;
     this.pendingCompletion = true;
     
-    // If processing is ongoing, it will call onComplete when done
-    // If there's a buffer waiting and not processing, start processing
     if (this.audioBuffer.length > 0 && !this.processingInProgress) {
       await this.processAccumulatedAudio();
-      // processAccumulatedAudio will call onComplete when done
     } else if (!this.processingInProgress && this.audioBuffer.length === 0) {
-      // Nothing to process, complete immediately
       this.onComplete();
     }
-    // Otherwise, processing is in progress and will handle completion
   }
 }

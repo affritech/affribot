@@ -25,6 +25,14 @@ export const ANIMATIONS: Record<string, AnimationInfo> = {
     emoji: "🧍",
     loop: false,
   },
+  Stand: {
+    name: "Stand",
+    url: "https://files.catbox.moe/mcfctm.fbx",
+    description: "Standing up animation",
+    emoji: "🧍",
+    loop: false,
+  },
+  
   
 };
 

@@ -25,6 +25,7 @@ export class AudioStreamer {
   private lastPlaybackTime: number = 0;
   private underrunCount: number = 0;
   private consecutiveGoodPlayback: number = 0;
+  private networkMonitorInterval: number | null = null; // FIX: Track interval
   
   public gainNode: GainNode;
   public source: AudioBufferSourceNode;
@@ -48,6 +49,9 @@ export class AudioStreamer {
   private audioBufferStartTime: number = 0;
   private processingInProgress: boolean = false;
   private readonly RHUBARB_BATCH_SIZE: number = 1.0;
+  
+  // FIX: Track pending completion
+  private pendingCompletion: boolean = false;
 
   constructor(public context: AudioContext) {
     this.gainNode = this.context.createGain();
@@ -122,8 +126,13 @@ export class AudioStreamer {
     return hash.toString(36);
   }
 
+  // FIX: Store interval ID and clear it properly
   private monitorNetworkQuality(): void {
-    setInterval(() => {
+    if (this.networkMonitorInterval !== null) {
+      clearInterval(this.networkMonitorInterval);
+    }
+    
+    this.networkMonitorInterval = window.setInterval(() => {
       if (!this.adaptiveBufferEnabled) return;
       
       const now = this.context.currentTime;
@@ -153,7 +162,7 @@ export class AudioStreamer {
           this.consecutiveGoodPlayback = 0;
         }
       }
-    }, 1000);
+    }, 1000) as unknown as number;
   }
 
   startNewResponse(): void {
@@ -167,6 +176,7 @@ export class AudioStreamer {
     this.audioBufferDuration = 0;
     this.audioBufferStartTime = 0;
     this.processingInProgress = false;
+    this.pendingCompletion = false; // FIX: Reset completion flag
     
     this.processedChunks.clear();
     
@@ -195,8 +205,11 @@ export class AudioStreamer {
     let processingBuffer = this._processPCM16Chunk(chunk);
 
     if (this.lipSyncEnabled && this.lipSyncEngine && this.useRhubarb) {
+      // FIX: Better timing initialization
       if (this.audioBuffer.length === 0) {
-        this.audioBufferStartTime = this.scheduledTime;
+        this.audioBufferStartTime = this.hasStarted 
+          ? this.scheduledTime 
+          : this.context.currentTime + this.initialBufferTime;
       }
 
       this.audioBuffer.push(new Float32Array(processingBuffer));
@@ -246,6 +259,8 @@ export class AudioStreamer {
 
       console.log(`🎯 Processing ${chunkDuration.toFixed(3)}s chunk starting at ${audioStartTime.toFixed(3)}s`);
 
+      // Clear buffer before processing to avoid growing during async operation
+      const currentBufferDuration = this.audioBufferDuration;
       this.audioBuffer = [];
       this.audioBufferDuration = 0;
 
@@ -261,8 +276,17 @@ export class AudioStreamer {
     } finally {
       this.processingInProgress = false;
       
+      // FIX: Check if we should continue processing or complete
       if (this.audioBufferDuration >= this.RHUBARB_BATCH_SIZE) {
-        setTimeout(() => this.processAccumulatedAudio(), 10);
+        // More data accumulated, process it
+        this.processAccumulatedAudio();
+      } else if (this.pendingCompletion && this.audioBuffer.length > 0) {
+        // FIX: Complete pending, process remaining buffer
+        await this.processAccumulatedAudio();
+        this.onComplete();
+      } else if (this.pendingCompletion) {
+        // No more data to process, call completion
+        this.onComplete();
       }
     }
   }
@@ -316,19 +340,25 @@ export class AudioStreamer {
       source.buffer = audioBuffer;
       source.connect(this.gainNode);
 
+      // FIX: Only connect worklets once per source, outside the forEach
       const worklets = registeredWorklets.get(this.context);
-
       if (worklets) {
         Object.entries(worklets).forEach(([workletName, graph]) => {
           const { node, handlers } = graph;
           if (node) {
             source.connect(node);
-            node.port.onmessage = function (ev: MessageEvent) {
-              handlers.forEach((handler) => {
-                handler.call(node.port, ev);
-              });
-            };
-            node.connect(this.context.destination);
+            // FIX: Set up message handler only if not already set
+            if (!node.port.onmessage) {
+              node.port.onmessage = function (ev: MessageEvent) {
+                handlers.forEach((handler) => {
+                  handler.call(node.port, ev);
+                });
+              };
+            }
+            // Only connect to destination once per worklet node, not per source
+            if (!node.context) {
+              node.connect(this.context.destination);
+            }
           }
         });
       }
@@ -397,6 +427,7 @@ export class AudioStreamer {
     this.audioStartTime = 0;
     this.totalProcessedDuration = 0;
     this.processedChunks.clear();
+    this.pendingCompletion = false; // FIX: Reset completion flag
 
     this.audioBuffer = [];
     this.audioBufferDuration = 0;
@@ -405,6 +436,12 @@ export class AudioStreamer {
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
+    }
+    
+    // FIX: Clear network monitoring interval
+    if (this.networkMonitorInterval !== null) {
+      clearInterval(this.networkMonitorInterval);
+      this.networkMonitorInterval = null;
     }
 
     if (this.lipSyncEnabled && this.lipSyncEngine) {
@@ -432,13 +469,20 @@ export class AudioStreamer {
     this.gainNode.gain.setValueAtTime(1, this.context.currentTime);
   }
 
-  complete() {
+  // FIX: Properly handle completion with pending processing
+  async complete() {
     this.isStreamComplete = true;
+    this.pendingCompletion = true;
     
+    // If processing is ongoing, it will call onComplete when done
+    // If there's a buffer waiting and not processing, start processing
     if (this.audioBuffer.length > 0 && !this.processingInProgress) {
-      this.processAccumulatedAudio();
+      await this.processAccumulatedAudio();
+      // processAccumulatedAudio will call onComplete when done
+    } else if (!this.processingInProgress && this.audioBuffer.length === 0) {
+      // Nothing to process, complete immediately
+      this.onComplete();
     }
-    
-    this.onComplete();
+    // Otherwise, processing is in progress and will handle completion
   }
 }

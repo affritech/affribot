@@ -50,7 +50,8 @@ function AltairComponent({
   }, [selectedLanguage, selectedLanguageName]);
 
   useEffect(() => {
-    setModel("models/gemini-2.5-flash-native-audio-preview-09-2025");
+    setModel("models/gemini-live-2.5-flash-preview");
+    //gemini-2.5-flash-exp-native-audio-thinking-dialog
     
     // Build the language instruction based on selected language
     const languageInstruction = selectedLanguage === 'en' 

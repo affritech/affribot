@@ -47,7 +47,11 @@ function App() {
   const [cameraPosition, setCameraPosition] = useState<[number, number, number]>([-3, 1, 8]);
   const [showCameraControls, setShowCameraControls] = useState(true);
   
-  // NEW: Network quality indicator
+  // Language state management
+  const [selectedLanguage, setSelectedLanguage] = useState('en');
+  const [selectedLanguageName, setSelectedLanguageName] = useState('English');
+  
+  // Network quality indicator
   const [networkQuality, setNetworkQuality] = useState<'good' | 'fair' | 'poor'>('good');
   const [echoWarning, setEchoWarning] = useState(false);
 
@@ -85,7 +89,14 @@ function App() {
     }));
   };
 
-  // NEW: Monitor network connection quality
+  // Handle language change from ControlTray
+  const handleLanguageChange = (code: string, name: string) => {
+    console.log('🌐 App received language change:', code, name);
+    setSelectedLanguage(code);
+    setSelectedLanguageName(name);
+  };
+
+  // Monitor network connection quality
   useEffect(() => {
     if ('connection' in navigator) {
       const connection = (navigator as any).connection;
@@ -113,7 +124,7 @@ function App() {
     }
   }, []);
 
-  // NEW: Listen for echo cancellation warnings
+  // Listen for echo cancellation warnings
   useEffect(() => {
     const handleEchoWarning = (event: any) => {
       if (event.detail?.type === 'echo-cancellation-disabled') {
@@ -140,7 +151,7 @@ function App() {
         <div className="streaming-console">
           {!isModelLoaded && <LoadingScreen isModelLoaded={isModelLoaded} />}
           
-          {/* NEW: Network Quality Indicator */}
+          {/* Network Quality Indicator */}
           {isModelLoaded && (
             <div style={{
               position: 'absolute',
@@ -176,7 +187,7 @@ function App() {
             </div>
           )}
           
-          {/* NEW: Echo Cancellation Warning */}
+          {/* Echo Cancellation Warning */}
           {echoWarning && (
             <div style={{
               position: 'absolute',
@@ -280,7 +291,10 @@ function App() {
                   onModelLoaded={() => setIsModelLoaded(true)}
                 />
               </Canvas>
-              <Altair/>
+              <Altair
+                selectedLanguage={selectedLanguage}
+                selectedLanguageName={selectedLanguageName}
+              />
               <video
                 className={cn("stream", {
                   hidden: !videoRef.current || !videoStream,
@@ -296,6 +310,7 @@ function App() {
               supportsVideo={true}
               onVideoStreamChange={setVideoStream}
               enableEditingSettings={true}
+              onLanguageChange={handleLanguageChange}
             />
           </main>
 

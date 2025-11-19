@@ -15,6 +15,7 @@ export type ControlTrayProps = {
   supportsVideo: boolean;
   onVideoStreamChange?: (stream: MediaStream | null) => void;
   enableEditingSettings?: boolean;
+  onLanguageChange?: (languageCode: string, languageName: string) => void;
 };
 
 type MediaStreamButtonProps = {
@@ -38,12 +39,28 @@ const MediaStreamButton = memo(
     )
 );
 
+export const languages = [
+  { code: 'en', name: 'English' },
+  { code: 'sw', name: 'Kiswahili' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'fr', name: 'French' },
+  { code: 'de', name: 'German' },
+  { code: 'it', name: 'Italian' },
+  { code: 'pt', name: 'Portuguese' },
+  { code: 'ja', name: 'Japanese' },
+  { code: 'zh', name: 'Chinese' },
+  { code: 'ar', name: 'Arabic' },
+  { code: 'ru', name: 'Russian' },
+  
+];
+
 function ControlTray({
   videoRef,
   children,
   onVideoStreamChange = () => {},
   supportsVideo,
   enableEditingSettings,
+  onLanguageChange,
 }: ControlTrayProps) {
   const videoStreams = [useWebcam(), useScreenCapture()];
   const [activeVideoStream, setActiveVideoStream] =
@@ -52,8 +69,11 @@ function ControlTray({
   const [inVolume, setInVolume] = useState(0);
   const [audioRecorder] = useState(() => new AudioRecorder());
   const [muted, setMuted] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState('en');
+  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const renderCanvasRef = useRef<HTMLCanvasElement>(null);
   const connectButtonRef = useRef<HTMLButtonElement>(null);
+  const languageMenuRef = useRef<HTMLDivElement>(null);
 
   const { client, connected, connect, disconnect, volume } = useLiveAPIContext();
 
@@ -125,6 +145,23 @@ function ControlTray({
     };
   }, [connected, activeVideoStream, client, videoRef]);
 
+  // Close language menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (languageMenuRef.current && !languageMenuRef.current.contains(event.target as Node)) {
+        setShowLanguageMenu(false);
+      }
+    };
+
+    if (showLanguageMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showLanguageMenu]);
+
   const changeStreams = (next?: UseMediaStreamResult) => async () => {
     if (next) {
       const mediaStream = await next.start();
@@ -137,6 +174,26 @@ function ControlTray({
 
     videoStreams.filter((msr) => msr !== next).forEach((msr) => msr.stop());
   };
+
+  const handleLanguageSelect = (languageCode: string) => {
+    const language = languages.find(lang => lang.code === languageCode);
+    if (language) {
+      setSelectedLanguage(languageCode);
+      setShowLanguageMenu(false);
+      
+      console.log('Selected language:', languageCode, language.name);
+      
+      // Call the callback to notify parent component
+      if (onLanguageChange) {
+        onLanguageChange(languageCode, language.name);
+      }
+    }
+  };
+
+  // Debug: log when menu state changes
+  useEffect(() => {
+    console.log('showLanguageMenu changed to:', showLanguageMenu);
+  }, [showLanguageMenu]);
 
   return (
     <>
@@ -177,8 +234,81 @@ function ControlTray({
               />
             </>
           )}
+
           {children}
         </nav>
+
+        {/* Language Selector - OUTSIDE nav so it's always clickable */}
+        <div style={{ position: 'relative', pointerEvents: 'auto' }} ref={languageMenuRef}>
+          <button
+            className="action-button"
+            style={{ pointerEvents: 'auto' }}
+            onClick={() => {
+              console.log('Language button clicked, current state:', showLanguageMenu);
+              setShowLanguageMenu(!showLanguageMenu);
+            }}
+            title="Select Language"
+          >
+            <span className="material-symbols-outlined">language</span>
+          </button>
+          
+          {showLanguageMenu && (
+            <div style={{
+              position: 'fixed',
+              bottom: '200px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              backgroundColor: '#1a1a1a',
+              border: '1px solid #444',
+              borderRadius: '8px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+              maxHeight: '300px',
+              overflowY: 'auto',
+              minWidth: '200px',
+              zIndex: 9999,
+            }}>
+              <div style={{ 
+                padding: '12px 16px', 
+                fontWeight: '600', 
+                borderBottom: '1px solid #444',
+                color: '#fff',
+                fontSize: '14px',
+              }}>
+                Select Language
+              </div>
+              {languages.map((lang) => (
+                <button
+                  key={lang.code}
+                  onClick={() => handleLanguageSelect(lang.code)}
+                  style={{
+                    display: 'block',
+                    position: 'relative',
+                    left: '10px',
+                    bottom: '10px',
+                    width: '100%',
+                    padding: '12px 16px',
+                    border: 'none',
+                    backgroundColor: selectedLanguage === lang.code ? '#333' : 'transparent',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: selectedLanguage === lang.code ? '600' : '400',
+                    color: selectedLanguage === lang.code ? '#fff' : '#ccc',
+                    transition: 'background-color 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = selectedLanguage === lang.code ? '#333' : '#2a2a2a';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = selectedLanguage === lang.code ? '#333' : 'transparent';
+                  }}
+                >
+                  {lang.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className={cn("connection-container", { connected })}>
           <div className="connection-button-container">

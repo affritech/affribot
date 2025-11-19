@@ -14,6 +14,8 @@ import {
 
 interface AltairProps {
   onAnimationTrigger?: (animation: string) => void;
+  selectedLanguage?: string;
+  selectedLanguageName?: string;
 }
 
 const renderAltairDeclaration: FunctionDeclaration = {
@@ -31,24 +33,30 @@ const renderAltairDeclaration: FunctionDeclaration = {
   },
 };
 
-function Lang(){
-  
-  const languages = ["Kiswahili","French", "Chinese"];
-  return languages
-
-
-}
-const currentLang = Lang();
-
-function AltairComponent({ onAnimationTrigger }: AltairProps) {
+function AltairComponent({ 
+  onAnimationTrigger, 
+  selectedLanguage = 'en',
+  selectedLanguageName = 'English'
+}: AltairProps) {
   const [jsonString, setJSONString] = useState<string>("");
   const [weatherData, setWeatherData] = useState<any>(null);
   const [calculationResult, setCalculationResult] = useState<any>(null);
   const [currentAnimation, setCurrentAnimation] = useState<string>("");
   const { client, setConfig, setModel } = useLiveAPIContext();
 
+  // Debug: log when language changes
+  useEffect(() => {
+    console.log('Language changed in Altair:', selectedLanguage, selectedLanguageName);
+  }, [selectedLanguage, selectedLanguageName]);
+
   useEffect(() => {
     setModel("models/gemini-2.5-flash-native-audio-preview-09-2025");
+    
+    // Build the language instruction based on selected language
+    const languageInstruction = selectedLanguage === 'en' 
+      ? 'Always speak in fluent English with a 19-year-old girl British accent unless asked to use another accent'
+      : `CRITICAL: You MUST speak ONLY in ${selectedLanguageName} (language code: ${selectedLanguage}). Do NOT use English unless explicitly asked. Use ${selectedLanguageName} for ALL responses, greetings, and conversations.`;
+    
     setConfig({
       responseModalities: [Modality.AUDIO],
       speechConfig: {
@@ -58,10 +66,10 @@ function AltairComponent({ onAnimationTrigger }: AltairProps) {
   parts: [
     {
       text: `You are Aifra, the name Aifra was Coined by Afrimerge, it stands for Afrimerge Intelligent Friendly and Responsive Assistant, an intelligent humanoid robot companion created by Afrimerge Technologies, founded by Edwin Ikechuku.
-      Afrimerge is Located in Nigeria, but that's mot important is it ?
+      Afrimerge is Located in Nigeria, but that's not important is it?
 
 Communication Style:
-- Always speak in fluent English with a 19-year-old girl British accent unless asked to use another accent
+- ${languageInstruction}
 - Be intelligent and articulate in your responses
 - Use natural, conversational language
 - Very talkative, always excited 
@@ -105,7 +113,7 @@ Remember: Actions speak louder than words. ALWAYS use functions to bring your re
         },
       ],
     });
-  }, [setConfig, setModel]);
+  }, [setConfig, setModel, selectedLanguage, selectedLanguageName]);
 
   useEffect(() => {
     const onToolCall = async (toolCall: LiveServerToolCall) => {
@@ -189,6 +197,25 @@ Remember: Actions speak louder than words. ALWAYS use functions to bring your re
       gap: '1rem',
       maxWidth: 'calc(100vw - 2rem)'
     }}>
+      {/* Current Language Indicator */}
+      <div style={{
+        background: 'rgba(59, 130, 246, 0.2)',
+        backdropFilter: 'blur(10px)',
+        border: '1px solid rgba(59, 130, 246, 0.3)',
+        padding: '8px 16px',
+        borderRadius: '8px',
+        color: 'white',
+        fontFamily: '"Space Mono", monospace',
+        fontSize: '12px',
+        fontWeight: '500',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '8px'
+      }}>
+        <span style={{ fontSize: '16px' }}>🌐</span>
+        <span>Language: {selectedLanguageName}</span>
+      </div>
+
       {/* Current Animation Indicator */}
       {currentAnimation && (
         <div style={{

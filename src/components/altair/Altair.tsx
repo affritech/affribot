@@ -62,7 +62,7 @@ function AltairComponent({
     setConfig({
       responseModalities: [Modality.AUDIO],
       speechConfig: {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
+        voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
       },
     systemInstruction: {
   parts: [

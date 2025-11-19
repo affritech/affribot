@@ -31,6 +31,15 @@ const renderAltairDeclaration: FunctionDeclaration = {
   },
 };
 
+function Lang(){
+  
+  const languages = ["Kiswahili","French", "Chinese"];
+  return languages
+
+
+}
+const currentLang = Lang();
+
 function AltairComponent({ onAnimationTrigger }: AltairProps) {
   const [jsonString, setJSONString] = useState<string>("");
   const [weatherData, setWeatherData] = useState<any>(null);

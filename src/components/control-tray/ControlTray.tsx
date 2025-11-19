@@ -7,7 +7,7 @@ import { useWebcam } from "../../hooks/use-webcam";
 import { AudioRecorder } from "../../lib/audio-recorder";
 import AudioPulse from "../audio-pulse/AudioPulse";
 import "./control-tray.scss";
-import SettingsDialog from "../settings-dialog/SettingsDialog";
+//import SettingsDialog from "../settings-dialog/SettingsDialog";
 
 export type ControlTrayProps = {
   videoRef: RefObject<HTMLVideoElement>;
@@ -161,13 +161,13 @@ function ControlTray({
 
           {supportsVideo && (
             <>
-              <MediaStreamButton
+             {/* <MediaStreamButton
                 isStreaming={screenCapture.isStreaming}
                 start={changeStreams(screenCapture)}
                 stop={changeStreams()}
                 onIcon="cancel_presentation"
                 offIcon="present_to_all"
-              />
+              /> */}
               <MediaStreamButton
                 isStreaming={webcam.isStreaming}
                 start={changeStreams(webcam)}
@@ -196,7 +196,7 @@ function ControlTray({
           <span className="text-indicator">Live...</span>
         </div>
         
-        {enableEditingSettings && <SettingsDialog />}
+        {/*enableEditingSettings && <SettingsDialog />*/}
       </section>
     </>
   );

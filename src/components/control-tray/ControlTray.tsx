@@ -239,8 +239,8 @@ function ControlTray({
         </nav>
 
         {/* Language Selector - OUTSIDE nav so it's always clickable */}
-        <div style={{ position: 'relative', pointerEvents: 'auto' }} ref={languageMenuRef}>
-          <button
+        <div style={{ position: 'relative', pointerEvents: 'auto' , left: '100px', bottom: '-15px'}} ref={languageMenuRef}>
+        <button 
             className="action-button"
             style={{ pointerEvents: 'auto' }}
             onClick={() => {
@@ -282,9 +282,6 @@ function ControlTray({
                   onClick={() => handleLanguageSelect(lang.code)}
                   style={{
                     display: 'block',
-                    position: 'relative',
-                    left: '10px',
-                    bottom: '10px',
                     width: '100%',
                     padding: '12px 16px',
                     border: 'none',
@@ -310,9 +307,9 @@ function ControlTray({
           )}
         </div>
 
-        <div className={cn("connection-container", { connected })}>
+        <div className={cn("connection-container", { connected })} style={{ position: 'relative', left: '-50px'}}>
           <div className="connection-button-container">
-            <button
+            <button 
               ref={connectButtonRef}
               className={cn("action-button connect-toggle", { connected })}
               onClick={connected ? disconnect : connect}

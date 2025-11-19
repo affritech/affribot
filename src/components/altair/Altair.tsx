@@ -50,9 +50,9 @@ function AltairComponent({
   }, [selectedLanguage, selectedLanguageName]);
 
   useEffect(() => {
-    setModel("models/gemini-2.0-flash-exp");
+    setModel("models/gemini-live-2.5-flash-preview");
     //gemini-live-2.5-flash-preview
-   // gemini-2.0-flash-exp
+   
 
   
     const languageInstruction = selectedLanguage === 'en' 

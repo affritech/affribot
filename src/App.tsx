@@ -1,9 +1,7 @@
 import { useRef, useState, useEffect } from "react";
 import "./App.scss";
-
 import { Canvas } from "@react-three/fiber";
 import { Experience } from "./components/Experience";
-
 import { LiveAPIProvider } from "./contexts/LiveAPIContext";
 import { Altair } from "./components/altair/Altair";
 import ControlTray from "./components/control-tray/ControlTray";
@@ -12,7 +10,6 @@ import SceneSelector from "./lib/SceneSelector";
 import { getAvatar, getScene } from "./lib/SceneManeger";
 import cn from "classnames";
 import { LiveClientOptions } from "./types";
-
 const API_KEY = process.env.REACT_APP_GEMINI_API_KEY as string;
 if (typeof API_KEY !== "string") {
   throw new Error("set REACT_APP_GEMINI_API_KEY in .env");
@@ -274,7 +271,6 @@ function App() {
               )}
             </div>
           )}
-          
           <main>
             <div className="main-app-area">
               <Canvas shadows camera={{ position: cameraPosition, fov: 40 }}>

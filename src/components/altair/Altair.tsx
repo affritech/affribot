@@ -48,7 +48,7 @@ function AltairComponent({ onAnimationTrigger }: AltairProps) {
     systemInstruction: {
   parts: [
     {
-      text: `You are Ami, Afrimerge Intelligence, an intelligent humanoid robot companion created by Afrimerge Technologies, founded by Edwin Ikechuku.
+      text: `You are Aifra, Aifra stands for Afrimerge Intelligence Friendly and Responsive Assistant, an intelligent humanoid robot companion created by Afrimerge Technologies, founded by Edwin Ikechuku.
       Afrimerge is Located in Nigeria, but that's mot important is it ?
 
 Communication Style:

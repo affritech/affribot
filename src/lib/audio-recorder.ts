@@ -23,6 +23,16 @@ export class AudioRecorder extends EventEmitter {
   recordingWorklet: AudioWorkletNode | undefined;
   vuWorklet: AudioWorkletNode | undefined;
 
+  // Audio processing nodes
+  private highpassFilter: BiquadFilterNode | undefined;
+  private compressor: DynamicsCompressorNode | undefined;
+  private gainNode: GainNode | undefined;
+  
+  // Voice Activity Detection
+  private vadThreshold: number = 0.01;
+  private silenceTimeout: number | null = null;
+  private isSpeaking: boolean = false;
+
   private starting: Promise<void> | null = null;
 
   constructor(public sampleRate = 16000) {
@@ -36,46 +46,26 @@ export class AudioRecorder extends EventEmitter {
 
     this.starting = new Promise(async (resolve, reject) => {
       try {
-        // CRITICAL: Enhanced audio constraints for echo cancellation
+        // CRITICAL: Maximum echo cancellation and noise reduction
         const audioConstraints: MediaTrackConstraints = {
-          echoCancellation: true,        // MUST BE TRUE
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: this.sampleRate,
-          channelCount: 1,
+          echoCancellation: { ideal: true },
+          noiseSuppression: { ideal: true },
+          autoGainControl: { ideal: true },
+          sampleRate: { ideal: this.sampleRate },
+          channelCount: { ideal: 1 },
+          // Advanced constraints
+          latency: { ideal: 0 },
         };
 
-        // Add experimental constraints for browsers that support them
-        const experimentalConstraints: any = {
-          ...audioConstraints,
-          // Google-specific echo cancellation (Chrome)
-          googEchoCancellation: true,
-          googAutoGainControl: true,
-          googNoiseSuppression: true,
-          googHighpassFilter: true,
-          googTypingNoiseDetection: true,
-          // Advanced echo cancellation
-          echoCancellationType: 'system', // Use system-level AEC
-        };
+        // Try to get the best possible audio input
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          audio: audioConstraints,
+        });
 
-        // Try experimental constraints first, fall back to standard
-        let constraints: MediaStreamConstraints;
-        try {
-          this.stream = await navigator.mediaDevices.getUserMedia({
-            audio: experimentalConstraints,
-          });
-          console.log("✅ Using experimental audio constraints");
-        } catch (e) {
-          console.log("⚠️ Experimental constraints not supported, using standard");
-          this.stream = await navigator.mediaDevices.getUserMedia({
-            audio: audioConstraints,
-          });
-        }
-
-        // CRITICAL: Verify echo cancellation is active
+        // Verify settings
         const audioTrack = this.stream.getAudioTracks()[0];
         const settings = audioTrack.getSettings();
-        console.log("✅ Audio Track Settings:", {
+        console.log("🎤 Audio Track Settings:", {
           echoCancellation: settings.echoCancellation,
           noiseSuppression: settings.noiseSuppression,
           autoGainControl: settings.autoGainControl,
@@ -83,24 +73,43 @@ export class AudioRecorder extends EventEmitter {
           channelCount: settings.channelCount,
         });
 
-        // CRITICAL WARNING: If echo cancellation is NOT active
         if (!settings.echoCancellation) {
-          console.error("❌ CRITICAL: Echo cancellation NOT active!");
-          console.error("❌ Audio feedback WILL occur on speaker mode!");
-          console.error("❌ Solution: Use headphones or external echo cancellation");
-          
-          // Optional: Show UI warning to user
+          console.warn("⚠️ Echo cancellation NOT active - use headphones!");
           this.emit('warning', {
             type: 'echo-cancellation-disabled',
-            message: 'Echo cancellation is not working. Please use headphones to avoid feedback.'
+            message: 'Use headphones to avoid audio feedback.'
           });
-        } else {
-          console.log("✅ Echo cancellation is ACTIVE");
         }
 
+        // Create audio context
         this.audioContext = await audioContext({ sampleRate: this.sampleRate });
         this.source = this.audioContext.createMediaStreamSource(this.stream);
 
+        // 🔥 CRITICAL: High-pass filter to remove low-frequency noise
+        this.highpassFilter = this.audioContext.createBiquadFilter();
+        this.highpassFilter.type = "highpass";
+        this.highpassFilter.frequency.value = 80; // Remove rumble below 80Hz
+        this.highpassFilter.Q.value = 0.7;
+
+        // 🔥 CRITICAL: Compressor for consistent volume and clarity
+        this.compressor = this.audioContext.createDynamicsCompressor();
+        this.compressor.threshold.value = -30;
+        this.compressor.knee.value = 20;
+        this.compressor.ratio.value = 8;
+        this.compressor.attack.value = 0.003;
+        this.compressor.release.value = 0.15;
+
+        // 🔥 CRITICAL: Gain control for optimal recording level
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.gain.value = 1.2; // Slight boost for clarity
+
+        // Connect audio processing chain
+        this.source
+          .connect(this.highpassFilter)
+          .connect(this.compressor)
+          .connect(this.gainNode);
+
+        // Setup recording worklet
         const workletName = "audio-recorder-worklet";
         const src = createWorketFromSrc(workletName, AudioRecordingWorklet);
 
@@ -111,7 +120,6 @@ export class AudioRecorder extends EventEmitter {
         );
 
         this.recordingWorklet.port.onmessage = async (ev: MessageEvent) => {
-          // worklet processes recording floats and messages converted buffer
           const arrayBuffer = ev.data.data.int16arrayBuffer;
 
           if (arrayBuffer) {
@@ -119,20 +127,53 @@ export class AudioRecorder extends EventEmitter {
             this.emit("data", arrayBufferString);
           }
         };
-        this.source.connect(this.recordingWorklet);
 
-        // vu meter worklet
+        // Connect gain node to recording worklet
+        this.gainNode.connect(this.recordingWorklet);
+
+        // Setup VU meter worklet
         const vuWorkletName = "vu-meter";
         await this.audioContext.audioWorklet.addModule(
           createWorketFromSrc(vuWorkletName, VolMeterWorket)
         );
         this.vuWorklet = new AudioWorkletNode(this.audioContext, vuWorkletName);
+        
         this.vuWorklet.port.onmessage = (ev: MessageEvent) => {
-          this.emit("volume", ev.data.volume);
+          const volume = ev.data.volume;
+          this.emit("volume", volume);
+          
+          // 🔥 CRITICAL: Voice Activity Detection
+          // Only send audio when actually speaking
+          if (volume > this.vadThreshold) {
+            if (!this.isSpeaking) {
+              this.isSpeaking = true;
+              console.log("🗣️ Speech detected");
+              this.emit("speech-start");
+            }
+            
+            // Clear silence timeout
+            if (this.silenceTimeout) {
+              clearTimeout(this.silenceTimeout);
+              this.silenceTimeout = null;
+            }
+          } else {
+            // Start silence timeout
+            if (this.isSpeaking && !this.silenceTimeout) {
+              this.silenceTimeout = window.setTimeout(() => {
+                this.isSpeaking = false;
+                console.log("🤐 Speech ended");
+                this.emit("speech-end");
+                this.silenceTimeout = null;
+              }, 500); // 500ms of silence before stopping
+            }
+          }
         };
 
-        this.source.connect(this.vuWorklet);
+        // Connect gain node to VU meter
+        this.gainNode.connect(this.vuWorklet);
+
         this.recording = true;
+        console.log("✅ Audio recorder started with noise reduction");
         resolve();
         this.starting = null;
       } catch (error) {
@@ -144,20 +185,63 @@ export class AudioRecorder extends EventEmitter {
   }
 
   stop() {
-    // its plausible that stop would be called before start completes
-    // such as if the websocket immediately hangs up
     const handleStop = () => {
+      // Disconnect all nodes
       this.source?.disconnect();
+      this.highpassFilter?.disconnect();
+      this.compressor?.disconnect();
+      this.gainNode?.disconnect();
+      this.recordingWorklet?.disconnect();
+      this.vuWorklet?.disconnect();
+
+      // Stop all tracks
       this.stream?.getTracks().forEach((track) => track.stop());
+
+      // Clear timers
+      if (this.silenceTimeout) {
+        clearTimeout(this.silenceTimeout);
+        this.silenceTimeout = null;
+      }
+
+      // Reset state
       this.stream = undefined;
       this.recordingWorklet = undefined;
       this.vuWorklet = undefined;
+      this.highpassFilter = undefined;
+      this.compressor = undefined;
+      this.gainNode = undefined;
       this.recording = false;
+      this.isSpeaking = false;
+
+      console.log("🛑 Audio recorder stopped");
     };
+
     if (this.starting) {
       this.starting.then(handleStop);
       return;
     }
     handleStop();
+  }
+
+  // Adjust sensitivity for voice activity detection
+  setVADThreshold(threshold: number) {
+    this.vadThreshold = threshold;
+    console.log(`🎚️ VAD threshold set to ${threshold}`);
+  }
+
+  // Adjust input gain
+  setInputGain(gain: number) {
+    if (this.gainNode) {
+      this.gainNode.gain.value = gain;
+      console.log(`🎚️ Input gain set to ${gain}`);
+    }
+  }
+
+  // Get current audio settings
+  getSettings() {
+    if (!this.stream) return null;
+    
+    const audioTrack = this.stream.getAudioTracks()[0];
+    return audioTrack.getSettings();
   }
 }

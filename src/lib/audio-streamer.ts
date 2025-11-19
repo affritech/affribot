@@ -15,6 +15,10 @@ export class AudioStreamer {
   private checkInterval: number | null = null;
   private scheduledTime: number = 0;
   
+  // CRITICAL: Track all active audio sources for instant stopping
+  private activeSources: AudioBufferSourceNode[] = [];
+  private currentResponseId: number = 0;
+  
   // CRITICAL: Adaptive buffering for poor connections
   private initialBufferTime: number = 0.3;
   private minBufferTime: number = 0.2;
@@ -166,7 +170,10 @@ export class AudioStreamer {
   }
 
   startNewResponse(): void {
-    console.log("🔄 Starting new response - resetting lip sync and audio");
+    console.log("🔄 Starting new response - resetting state");
+    
+    // Increment response ID to invalidate any in-flight audio
+    this.currentResponseId++;
     
     this.hasStarted = false;
     this.audioStartTime = 0;
@@ -182,7 +189,7 @@ export class AudioStreamer {
     
     this.audioQueue = [];
     this.isPlaying = false;
-    this.isStreamComplete = false; // FIX: Reset stream complete flag
+    this.isStreamComplete = false;
     
     if (this.lipSyncEngine) {
       this.lipSyncEngine.reset();
@@ -190,6 +197,7 @@ export class AudioStreamer {
   }
 
   addPCM16(chunk: Uint8Array) {
+    // Deduplicate chunks
     const chunkHash = this.hashChunk(chunk);
     if (this.processedChunks.has(chunkHash)) {
       console.warn("⚠️ Duplicate chunk detected, skipping");
@@ -205,6 +213,7 @@ export class AudioStreamer {
     this.isStreamComplete = false;
     let processingBuffer = this._processPCM16Chunk(chunk);
 
+    // Lip sync processing
     if (this.lipSyncEnabled && this.lipSyncEngine && this.useRhubarb) {
       if (this.audioBuffer.length === 0) {
         this.audioBufferStartTime = this.hasStarted 
@@ -220,6 +229,7 @@ export class AudioStreamer {
       }
     }
 
+    // Split into chunks
     while (processingBuffer.length >= this.bufferSize) {
       const buffer = processingBuffer.slice(0, this.bufferSize);
       this.audioQueue.push(buffer);
@@ -230,6 +240,7 @@ export class AudioStreamer {
       this.audioQueue.push(processingBuffer);
     }
 
+    // Start playing if not already
     if (!this.isPlaying) {
       this.isPlaying = true;
       this.scheduledTime = this.context.currentTime + this.initialBufferTime;
@@ -297,14 +308,24 @@ export class AudioStreamer {
 
   private scheduleNextBuffer() {
     const SCHEDULE_AHEAD_TIME = this.initialBufferTime + 0.1;
+    const responseId = this.currentResponseId;
 
     while (
       this.audioQueue.length > 0 &&
       this.scheduledTime < this.context.currentTime + SCHEDULE_AHEAD_TIME
     ) {
+      // Check if we've been interrupted
+      if (responseId !== this.currentResponseId) {
+        console.log("🚫 Response interrupted, stopping schedule");
+        return;
+      }
+
       const audioData = this.audioQueue.shift()!;
       const audioBuffer = this.createAudioBuffer(audioData);
       const source = this.context.createBufferSource();
+
+      // 🔥 CRITICAL: Track this source for interruption
+      this.activeSources.push(source);
 
       if (this.lastScheduledSource) {
         try {
@@ -315,36 +336,17 @@ export class AudioStreamer {
       }
       this.lastScheduledSource = source;
 
-      if (this.audioQueue.length === 0) {
-        if (this.endOfQueueAudioSource) {
-          this.endOfQueueAudioSource.onended = null;
-        }
-        this.endOfQueueAudioSource = source;
-        source.onended = () => {
-          if (
-            !this.audioQueue.length &&
-            this.endOfQueueAudioSource === source
-          ) {
-            this.endOfQueueAudioSource = null;
-            this.onComplete();
-          }
-        };
-      }
-
       source.buffer = audioBuffer;
       source.connect(this.gainNode);
 
-      // FIX: Proper worklet connection - only connect each source to worklet
-      // Worklet nodes should ONLY be connected to destination ONCE, not per source
+      // Connect worklets for volume metering
       const worklets = registeredWorklets.get(this.context);
       if (worklets && !this.workletsConnected) {
         Object.entries(worklets).forEach(([workletName, graph]) => {
           const { node, handlers } = graph;
           if (node) {
-            // Connect worklet to destination ONCE
             node.connect(this.context.destination);
             
-            // Set up message handler ONCE
             node.port.onmessage = function (ev: MessageEvent) {
               handlers.forEach((handler) => {
                 handler.call(node.port, ev);
@@ -355,7 +357,6 @@ export class AudioStreamer {
         this.workletsConnected = true;
       }
       
-      // Connect THIS audio source to worklets (for analysis/metering)
       if (worklets) {
         Object.values(worklets).forEach((graph) => {
           if (graph.node) {
@@ -368,6 +369,26 @@ export class AudioStreamer {
       source.start(startTime);
       
       this.lastPlaybackTime = startTime;
+
+      // 🔥 CRITICAL: Remove from active sources when naturally finished
+      source.onended = () => {
+        const index = this.activeSources.indexOf(source);
+        if (index > -1) {
+          this.activeSources.splice(index, 1);
+        }
+        
+        // Handle queue end
+        if (this.audioQueue.length === 0) {
+          if (this.endOfQueueAudioSource === source) {
+            this.endOfQueueAudioSource = null;
+            this.onComplete();
+          }
+        }
+      };
+
+      if (this.audioQueue.length === 0) {
+        this.endOfQueueAudioSource = source;
+      }
 
       if (!this.hasStarted) {
         this.audioStartTime = startTime;
@@ -413,6 +434,20 @@ export class AudioStreamer {
   }
 
   stop() {
+    console.log("🛑 STOP called - killing", this.activeSources.length, "active sources");
+    
+    // 🔥 CRITICAL: Stop ALL scheduled audio sources immediately
+    this.activeSources.forEach(source => {
+      try {
+        source.stop();
+        source.disconnect();
+      } catch (e) {
+        // Source may already be stopped/disconnected
+      }
+    });
+    this.activeSources = [];
+    
+    // Clear all state
     this.isPlaying = false;
     this.isStreamComplete = true;
     this.audioQueue = [];
@@ -436,22 +471,29 @@ export class AudioStreamer {
     if (this.networkMonitorInterval !== null) {
       clearInterval(this.networkMonitorInterval);
       this.networkMonitorInterval = null;
+      // Restart network monitoring
+      this.monitorNetworkQuality();
     }
 
     if (this.lipSyncEnabled && this.lipSyncEngine) {
       this.lipSyncEngine.stop();
     }
 
-    this.gainNode.gain.linearRampToValueAtTime(
-      0,
-      this.context.currentTime + 0.1
-    );
+    // Immediate silence (no fade for interruption)
+    this.gainNode.gain.cancelScheduledValues(this.context.currentTime);
+    this.gainNode.gain.setValueAtTime(0, this.context.currentTime);
 
+    // Recreate gain node for clean slate
     setTimeout(() => {
-      this.gainNode.disconnect();
+      try {
+        this.gainNode.disconnect();
+      } catch (e) {
+        // Already disconnected
+      }
       this.gainNode = this.context.createGain();
       this.gainNode.connect(this.context.destination);
-    }, 200);
+      this.gainNode.gain.setValueAtTime(1, this.context.currentTime);
+    }, 50);
   }
 
   async resume() {
